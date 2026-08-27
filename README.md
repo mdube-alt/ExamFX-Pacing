@@ -56,6 +56,7 @@ python -m examfx_pacing --write
 | `--rules FILE` | Override the campaign-to-category rules. See `category-rules.example.json`. |
 | `--tolerance 0.10` | How far off pace a line must be before a budget change is recommended (default 5%). |
 | `--no-recommendations` | Pacing table only - skips both the printed and the written recommendations. |
+| `--check-auth` | Verify the Windsor key and Google access, then exit. |
 
 ---
 
@@ -73,12 +74,71 @@ Two repository secrets are required:
 | `WINDSOR_API_KEY` | Your Windsor.ai API key. |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | The full service-account JSON key, pasted as-is. |
 
-### Granting spreadsheet access
+### Setting up the two secrets
 
-1. In Google Cloud, create a service account and download a JSON key.
-2. Enable the **Google Sheets API** for that project.
-3. Share the tracker with the service account's email address as an **Editor**.
-4. Paste the JSON into the `GOOGLE_SERVICE_ACCOUNT_JSON` secret.
+Nothing runs unattended until both exist. Check your work at any point with
+`python -m examfx_pacing --check-auth` (see below) - it names whatever is still
+missing.
+
+**1. `WINDSOR_API_KEY`**
+
+1. Sign in to [windsor.ai](https://windsor.ai) and copy the API key from your
+   account settings.
+2. In GitHub: **Settings -> Secrets and variables -> Actions -> New repository
+   secret**, named `WINDSOR_API_KEY`.
+
+The key must be on an account that can see all four ad accounts - Google Ads
+`997-052-9086`, Bing `180013684`, Meta `253084931845072` and LinkedIn
+`518468129`. The preflight probes each one separately, so a connector that is
+not shared with your key shows up by name.
+
+**2. `GOOGLE_SERVICE_ACCOUNT_JSON`**
+
+1. In the [Google Cloud console](https://console.cloud.google.com), pick or
+   create a project.
+2. Enable the **Google Sheets API** for it (*APIs & Services -> Library*).
+3. *IAM & Admin -> Service Accounts -> Create service account*. No roles are
+   needed - access comes from sharing the sheet, not from IAM.
+4. On the new account: *Keys -> Add key -> Create new key -> JSON*. Download it.
+5. Copy the `client_email` out of that JSON (it ends
+   `@...iam.gserviceaccount.com`) and **share the tracker with it as an
+   Editor**. Viewer is not enough; the run writes two tabs.
+6. Paste the whole JSON file, unedited, into a repository secret named
+   `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+Step 5 is the one that is usually missed. Sharing as Viewer passes every read
+check and only fails when the run tries to write, which is why the preflight
+tests write access explicitly.
+
+### Verifying the credentials
+
+```bash
+export WINDSOR_API_KEY=...
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+python -m examfx_pacing --check-auth
+```
+
+It exits non-zero if anything is wrong, and prints the fix:
+
+```
+Credential preflight
+====================
+
+  [PASS] Windsor / Google           reachable, 13 row(s) for the probe day
+  [PASS] Windsor / LinkedIn         reachable, no spend reported for the probe day
+  [PASS] Spreadsheet access         opened the tracker as pacing@proj.iam.gserviceaccount.com
+  [PASS] Tab '2026 Monthly Tracker' budgets are read from here
+  [PASS] Tab 'WoW Pacing'           the pacing table is written here
+  [PASS] Write access               the service account can edit the tracker
+```
+
+A channel reporting no spend is a pass, not a failure - LinkedIn routinely has
+none. Write access is proven with an empty batch update, so the check never
+touches a cell.
+
+The same check runs at the start of every scheduled run, so a missing or
+read-only credential fails with a named fix rather than a traceback. To run only
+the check, trigger the workflow from the Actions tab with **check_auth_only**.
 
 ---
 
@@ -221,6 +281,7 @@ reported ad spend.
 | `examfx_pacing/pacing.py` | Building the pacing table. |
 | `examfx_pacing/recommendations.py` | Budget actions and campaign drivers. |
 | `examfx_pacing/report.py` | Terminal and CSV rendering. |
+| `examfx_pacing/preflight.py` | Credential checks behind `--check-auth`. |
 | `examfx_pacing/run.py` | Orchestration. |
 | `examfx_pacing/cli.py` | Command line interface. |
 

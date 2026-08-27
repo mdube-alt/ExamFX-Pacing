@@ -11,6 +11,7 @@ from pathlib import Path
 from .categories import CategoryMapper, load_rules
 from .config import load_config
 from .recommendations import RecommendationSettings
+from .preflight import render_preflight, run_preflight
 from .report import render_csv, render_recommendations, render_text
 from .run import run_pacing
 from .sheets import SheetsClient, SheetsError
@@ -56,6 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the table without touching the spreadsheet (default).",
     )
     parser.add_argument(
+        "--check-auth", action="store_true",
+        help="Verify the Windsor key and Google access, then exit without pacing.",
+    )
+    parser.add_argument(
         "--csv", metavar="PATH",
         help="Also write the full pacing table to a CSV file.",
     )
@@ -99,6 +104,17 @@ def main(argv: list[str] | None = None) -> int:
     year, month = args.month or (as_of.year, as_of.month)
 
     config = load_config(spreadsheet_id=args.spreadsheet_id)
+
+    if args.check_auth:
+        sheets = (
+            SheetsClient(config.spreadsheet_id, config.google_credentials_file)
+            if config.google_credentials_file
+            else None
+        )
+        results = run_preflight(config, sheets)
+        print(render_preflight(results))
+        return 0 if all(result.ok for result in results) else 1
+
     mapper = CategoryMapper(load_rules(args.rules) if args.rules else None)
 
     if args.spend_csv:

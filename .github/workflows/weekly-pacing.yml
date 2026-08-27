@@ -16,6 +16,10 @@ on:
         description: "Print the table without writing to the spreadsheet."
         type: boolean
         default: false
+      check_auth_only:
+        description: "Only verify the Windsor key and Google access, then stop."
+        type: boolean
+        default: false
 
 concurrency:
   group: examfx-pacing
@@ -36,20 +40,40 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Warn rather than exit, so the preflight below can report the missing
+      # credential as a named fix instead of the job dying here.
       - name: Write service account credentials
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::error::GOOGLE_SERVICE_ACCOUNT_JSON secret is not set"
-            exit 1
+            echo "::warning::GOOGLE_SERVICE_ACCOUNT_JSON secret is not set"
+            exit 0
           fi
           printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
-      - name: Update the pacing tab
+      # Cheap: four one-day Windsor requests and one no-op Sheets call. Turns a
+      # missing or read-only credential into a named fix instead of a traceback.
+      - name: Verify credentials
         env:
           WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: python -m examfx_pacing --check-auth | tee preflight.txt
+
+      - name: Publish the preflight
+        if: always()
+        run: |
+          {
+            echo '### Credential preflight'
+            echo '```'
+            cat preflight.txt 2>/dev/null || echo 'the preflight produced no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update the pacing tab
+        if: ${{ !inputs.check_auth_only }}
+        env:
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
         run: |
           python -m examfx_pacing \
             ${{ inputs.month && format('--month {0}', inputs.month) || '' }} \
@@ -58,7 +82,7 @@ jobs:
             --csv pacing.csv | tee summary.txt
 
       - name: Publish the summary
-        if: always()
+        if: ${{ always() && !inputs.check_auth_only }}
         run: |
           {
             echo '### ExamFX weekly pacing'
