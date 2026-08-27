@@ -1,0 +1,6 @@
+{
+  "Insurance":  {"Google": 40000, "Bing": 6500, "Meta": 4000, "Programmatic": 2500},
+  "Securities": {"Google": 4000,  "Bing": 800,  "Meta": 0},
+  "Adjusters":  {"Google": 3000,  "Bing": 1000},
+  "Brand":      {"Google": 0,     "Bing": 0}
+}

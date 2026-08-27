@@ -129,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             budget_override=args.budgets,
             write=args.write and not args.dry_run,
             recommendation_settings=RecommendationSettings(tolerance=args.tolerance),
+            write_recommendations=not args.no_recommendations,
         )
     except (WindsorError, SheetsError) as exc:
         log.error("%s", exc)
@@ -148,6 +149,12 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("--dry-run was set, so nothing was written to the spreadsheet")
     elif args.write:
         log.info("updated %d rows in %r", result.rows_written, config.pacing_tab)
+        if not args.no_recommendations:
+            log.info(
+                "updated %d rows in %r",
+                result.recommendation_rows_written,
+                config.recommendations_tab,
+            )
 
     return 0
 

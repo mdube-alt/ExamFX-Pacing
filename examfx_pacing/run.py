@@ -27,6 +27,7 @@ class RunResult:
     recommendations: list[Recommendation]
     daily_spend: list[CampaignSpend]
     rows_written: int = 0
+    recommendation_rows_written: int = 0
 
 
 def _load_budget_override(path: str | Path) -> dict[tuple[str, str], float]:
@@ -51,6 +52,7 @@ def run_pacing(
     budget_override: str | Path | None = None,
     write: bool = False,
     recommendation_settings: RecommendationSettings | None = None,
+    write_recommendations: bool = True,
 ) -> RunResult:
     """Pull spend, rebuild the pacing table, and optionally write it back."""
     mapper = mapper or CategoryMapper()
@@ -92,14 +94,20 @@ def run_pacing(
     )
 
     rows_written = 0
+    recommendation_rows_written = 0
     if write:
         if sheets is None:
             raise ValueError("writing requires a SheetsClient")
         rows_written = sheets.write_pacing(config.pacing_tab, report)
+        if write_recommendations:
+            recommendation_rows_written = sheets.write_recommendations(
+                config.recommendations_tab, recommendations, through
+            )
 
     return RunResult(
         report=report,
         recommendations=recommendations,
         daily_spend=daily_spend,
         rows_written=rows_written,
+        recommendation_rows_written=recommendation_rows_written,
     )

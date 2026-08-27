@@ -14,6 +14,7 @@ from datetime import date, datetime
 from typing import Any
 
 from .pacing import HEADERS, BudgetKey, PacingReport
+from .recommendations import REC_HEADERS, Recommendation
 
 log = logging.getLogger(__name__)
 
@@ -209,4 +210,51 @@ class SheetsClient:
         ).execute()
 
         log.info("wrote %d pacing rows to %r", len(body_rows), tab)
+        return len(body_rows)
+
+    def _ensure_tab(self, tab: str) -> None:
+        """Create ``tab`` if the spreadsheet does not already have it."""
+        metadata = (
+            self.service.spreadsheets()
+            .get(spreadsheetId=self.spreadsheet_id, fields="sheets.properties.title")
+            .execute()
+        )
+        titles = {
+            sheet["properties"]["title"] for sheet in metadata.get("sheets", [])
+        }
+        if tab in titles:
+            return
+
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=self.spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": tab}}}]},
+        ).execute()
+        log.info("created tab %r", tab)
+
+    def write_recommendations(
+        self, tab: str, recommendations: list[Recommendation], as_of: date
+    ) -> int:
+        """Replace the recommendations tab. Returns rows written.
+
+        The tab is created on first use, so a fresh spreadsheet needs no setup.
+        Rows arrive biggest-lever-first from the engine, and that order is kept.
+        """
+        self._ensure_tab(tab)
+
+        body_rows = [rec.as_sheet_row(as_of) for rec in recommendations]
+        payload = [REC_HEADERS] + body_rows
+
+        # Clear first so a quieter week cannot leave last week's advice behind.
+        self.service.spreadsheets().values().clear(
+            spreadsheetId=self.spreadsheet_id, range=tab, body={}
+        ).execute()
+
+        self.service.spreadsheets().values().update(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"{tab}!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": payload},
+        ).execute()
+
+        log.info("wrote %d recommendation rows to %r", len(body_rows), tab)
         return len(body_rows)

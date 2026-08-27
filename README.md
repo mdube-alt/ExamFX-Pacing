@@ -19,7 +19,10 @@ by how much, and which campaigns are driving the variance.
 4. Computes, for each week, the cumulative pacing goal (`monthly budget x share of
    the month elapsed`), actual spend to date, variance and Over/Under status.
 5. Writes the rebuilt table back to the **WoW Pacing** tab, preserving the Notes
-   column, and prints budget recommendations.
+   column.
+6. Writes budget recommendations - which lines to raise, cut or pause, and the
+   campaigns driving each - to a **Budget Recommendations** tab, and prints the
+   same thing to the terminal.
 
 Analyst notes are matched back by week, category and channel, so comments like
 *"Decreased tROAS slightly -Maddi"* survive a rebuild.
@@ -52,7 +55,7 @@ python -m examfx_pacing --write
 | `--budgets FILE` | Read budgets from JSON instead of the tracker tab (lets you run with no Sheets access). |
 | `--rules FILE` | Override the campaign-to-category rules. See `category-rules.example.json`. |
 | `--tolerance 0.10` | How far off pace a line must be before a budget change is recommended (default 5%). |
-| `--no-recommendations` | Pacing table only. |
+| `--no-recommendations` | Pacing table only - skips both the printed and the written recommendations. |
 
 ---
 
@@ -111,6 +114,34 @@ tolerance (5% by default), and marked urgent past 15%. Lines that have already
 spent their whole month's budget are told to pause rather than given a new daily
 number. For each flagged line the top campaigns are listed with their share of
 the line and whether they are accelerating or slowing over the last seven days.
+
+### The Budget Recommendations tab
+
+Recommendations are also written to a **Budget Recommendations** tab, so the
+advice lives next to the pacing table instead of only in a terminal. The tab is
+created on the first run - there is nothing to set up by hand.
+
+One row per category/channel line, biggest lever first:
+
+| Column | Meaning |
+|---|---|
+| `As Of` | The date the advice was computed. Mid-week runs measure through that day. |
+| `Action` | `INCREASE`, `DECREASE`, `HOLD`, `OVER BUDGET`, `ALLOCATE OR PAUSE` or `NOT DELIVERING`. |
+| `Priority` | `Urgent` past 15% projected variance, otherwise `Normal`. |
+| `Current Daily` / `Suggested Daily` | Today's run rate, and the rate that lands the line on budget. |
+| `Daily Change` | How far the daily budget has to move, as a share of today's rate. |
+| `Projected Month-End` | Spend to date extrapolated over the whole month. |
+| `Recommendation` | The one-line instruction, the same sentence the terminal prints. |
+| `Top Campaigns` | The campaigns behind the line, with each one's share and whether it is accelerating or slowing. |
+
+`Daily Change` and `Projected Variance %` are written as fractions so the sheet
+can format them as percentages. Lines with no budget get no target daily figure -
+there is no daily number that fixes an unbudgeted line, so those cells are blank
+and the action is `ALLOCATE OR PAUSE`.
+
+The tab is cleared before each write, so a quieter week cannot leave the previous
+week's advice sitting underneath. Point it somewhere else with
+`EXAMFX_RECOMMENDATIONS_TAB` if the name should differ.
 
 ---
 
@@ -186,7 +217,7 @@ reported ad spend.
 | `examfx_pacing/weeks.py` | Month/week calendar and cumulative pacing percentages. |
 | `examfx_pacing/categories.py` | Campaign name to business line. |
 | `examfx_pacing/spend.py` | Windsor.ai and CSV spend sources, with retries. |
-| `examfx_pacing/sheets.py` | Reading budgets/notes and writing the pacing tab. |
+| `examfx_pacing/sheets.py` | Reading budgets/notes and writing the pacing and recommendations tabs. |
 | `examfx_pacing/pacing.py` | Building the pacing table. |
 | `examfx_pacing/recommendations.py` | Budget actions and campaign drivers. |
 | `examfx_pacing/report.py` | Terminal and CSV rendering. |
