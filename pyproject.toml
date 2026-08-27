@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "examfx-pacing"
+version = "1.0.0"
+description = "Automated weekly budget pacing for the ExamFX x HMDE tracker"
+requires-python = ">=3.10"
+dependencies = [
+    "google-api-python-client>=2.100.0",
+    "google-auth>=2.23.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+examfx-pacing = "examfx_pacing.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["examfx_pacing*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,83 @@
+name: Weekly pacing update
+
+on:
+  schedule:
+    # 13:00 UTC Monday = 9am ET / 6am PT, so the numbers are ready first thing.
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to pace (YYYY-MM). Defaults to the current month."
+        required: false
+      as_of:
+        description: "Treat this date as today (YYYY-MM-DD). Defaults to today."
+        required: false
+      dry_run:
+        description: "Print the table without writing to the spreadsheet."
+        type: boolean
+        default: false
+
+concurrency:
+  group: examfx-pacing
+  cancel-in-progress: false
+
+jobs:
+  pace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account credentials
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::GOOGLE_SERVICE_ACCOUNT_JSON secret is not set"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/sa.json"
+
+      - name: Update the pacing tab
+        env:
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: |
+          python -m examfx_pacing \
+            ${{ inputs.month && format('--month {0}', inputs.month) || '' }} \
+            ${{ inputs.as_of && format('--as-of {0}', inputs.as_of) || '' }} \
+            ${{ inputs.dry_run && '--dry-run' || '--write' }} \
+            --csv pacing.csv | tee summary.txt
+
+      - name: Publish the summary
+        if: always()
+        run: |
+          {
+            echo '### ExamFX weekly pacing'
+            echo '```'
+            cat summary.txt 2>/dev/null || echo 'the run produced no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the pacing table
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacing-${{ github.run_id }}
+          path: |
+            pacing.csv
+            summary.txt
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"

@@ -1,0 +1,6 @@
+[
+  {"category": "Adjusters",  "pattern": "adjuster"},
+  {"category": "Securities", "pattern": "securit"},
+  {"category": "Insurance",  "pattern": "insurance"},
+  {"category": "Brand",      "pattern": "brand"}
+]
