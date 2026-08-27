@@ -58,6 +58,8 @@ jobs:
       - name: Verify credentials
         env:
           WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+        # `shell: bash` adds -o pipefail, without which `tee` masks a failure.
+        shell: bash
         run: python -m examfx_pacing --check-auth | tee preflight.txt
 
       - name: Publish the preflight
@@ -74,6 +76,8 @@ jobs:
         if: ${{ !inputs.check_auth_only }}
         env:
           WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+        # As above: without pipefail, a failed pacing run would report success.
+        shell: bash
         run: |
           python -m examfx_pacing \
             ${{ inputs.month && format('--month {0}', inputs.month) || '' }} \
