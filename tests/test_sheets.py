@@ -75,3 +75,51 @@ def test_notes_survive_short_rows():
 
 def test_notes_on_an_empty_tab():
     assert parse_notes([]) == {}
+
+
+# --- Notes must not leak across a month boundary ------------------------------
+
+_TAB = [
+    HEADERS,
+    ["Week 4", "8/17 – 8/23", "Securities", "Google", "Aug 1", "Aug 23",
+     "74%", "$2,968", "$2,444", "61.11%", "-$523", "Under",
+     "Decreased tROAS slightly -Maddi"],
+    ["Week 4", "8/17 – 8/23", "Insurance", "Meta", "Aug 1", "Aug 23",
+     "74%", "$2,968", "$2,721", "68.03%", "-$247", "Under", "Budget increased"],
+    ["Week 2", "9/7 – 9/13", "Insurance", "Google", "Sep 1", "Sep 13",
+     "43%", "$17,333", "$18,001", "45.00%", "$668", "Over", "Watching CPCs"],
+]
+
+
+def test_notes_from_another_month_are_not_carried_over():
+    """August's week 4 note must not land on September's week 4 row."""
+    notes = parse_notes(_TAB, month=9)
+
+    assert ("4", "Securities", "Google") not in notes
+    assert (4, "Securities", "Google") not in notes
+    assert notes == {(2, "Insurance", "Google"): "Watching CPCs"}
+
+
+def test_notes_for_the_month_being_built_are_kept():
+    notes = parse_notes(_TAB, month=8)
+
+    assert notes[(4, "Securities", "Google")] == "Decreased tROAS slightly -Maddi"
+    assert notes[(4, "Insurance", "Meta")] == "Budget increased"
+    assert (2, "Insurance", "Google") not in notes
+
+
+def test_without_a_month_every_note_is_kept():
+    """The unfiltered behaviour, still used where the month is not known."""
+    notes = parse_notes(_TAB)
+
+    assert len(notes) == 3
+
+
+def test_a_row_with_an_unreadable_month_is_kept():
+    """Dropping a note loses it, since the tab is cleared on every write."""
+    rows = [
+        HEADERS,
+        ["Week 3", "", "Adjusters", "Bing", "", "", "", "", "", "", "", "",
+         "hand-edited row"],
+    ]
+    assert parse_notes(rows, month=9) == {(3, "Adjusters", "Bing"): "hand-edited row"}

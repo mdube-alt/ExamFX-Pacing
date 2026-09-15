@@ -18,8 +18,9 @@ __all__ = [
 #: ExamFX x HMDE - Budget Tracker
 SPREADSHEET_ID = "1CqEBATyQEzti8CKyknlyb9Iq_rwlcWUuI3DX_KayD4U"
 
-#: Tab holding the weekly pacing table this tool maintains.
-PACING_TAB = "WoW Pacing"
+#: Tab holding the weekly pacing table this tool maintains. This is the tool's
+#: own tab: the hand-maintained "WoW Pacing" tab is left alone.
+PACING_TAB = "Pacing - Claude"
 
 #: Tab holding per-month, per-category/channel budgets.
 TRACKER_TAB = "2026 Monthly Tracker"
