@@ -69,7 +69,7 @@ def run_pacing(
         if sheets is None:
             raise ValueError("either a SheetsClient or a budget override is required")
         budgets = parse_budgets(sheets.read(config.tracker_tab), year, month)
-        notes = parse_notes(sheets.read(config.pacing_tab))
+        notes = parse_notes(sheets.read(config.pacing_tab), month)
         log.info("loaded %d budget lines and %d notes from the tracker", len(budgets), len(notes))
 
     fetch_daily = getattr(spend_source, "fetch_daily", spend_source.fetch)

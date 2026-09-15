@@ -1,6 +1,6 @@
 # ExamFX Weekly Pacing
 
-Rebuilds the **WoW Pacing** tab of the *ExamFX x HMDE - Budget Tracker* from live
+Builds the **Pacing - Claude** tab of the *ExamFX x HMDE - Budget Tracker* from live
 ad-platform spend, so nobody has to pull each platform by hand on Monday morning.
 
 It also produces **budget recommendations** - which lines to raise, cut or pause,
@@ -18,14 +18,16 @@ by how much, and which campaigns are driving the variance.
    Brand) and rolls spend up by line and channel.
 4. Computes, for each week, the cumulative pacing goal (`monthly budget x share of
    the month elapsed`), actual spend to date, variance and Over/Under status.
-5. Writes the rebuilt table back to the **WoW Pacing** tab, preserving the Notes
-   column.
+5. Writes the rebuilt table to the **Pacing - Claude** tab, preserving the Notes
+   column. The hand-maintained **WoW Pacing** tab is never touched.
 6. Writes budget recommendations - which lines to raise, cut or pause, and the
    campaigns driving each - to a **Budget Recommendations** tab, and prints the
    same thing to the terminal.
 
 Analyst notes are matched back by week, category and channel, so comments like
-*"Decreased tROAS slightly -Maddi"* survive a rebuild.
+*"Decreased tROAS slightly -Maddi"* survive a rebuild. They are also scoped to
+the month being built, so last month's week 4 note cannot land on this month's
+week 4 row.
 
 ---
 
@@ -38,7 +40,7 @@ pip install -r requirements-dev.txt
 export WINDSOR_API_KEY=...
 python -m examfx_pacing --dry-run
 
-# Rebuild the WoW Pacing tab for real.
+# Rebuild the pacing tab for real.
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 python -m examfx_pacing --write
 ```
@@ -128,7 +130,7 @@ Credential preflight
   [PASS] Windsor / Meta             reachable, no spend reported for the probe day
   [PASS] Spreadsheet access         opened the tracker as pacing@proj.iam.gserviceaccount.com
   [PASS] Tab '2026 Monthly Tracker' budgets are read from here
-  [PASS] Tab 'WoW Pacing'           the pacing table is written here
+  [PASS] Tab 'Pacing - Claude'      the pacing table is written here
   [PASS] Write access               the service account can edit the tracker
 ```
 
@@ -201,7 +203,8 @@ and the action is `ALLOCATE OR PAUSE`.
 
 The tab is cleared before each write, so a quieter week cannot leave the previous
 week's advice sitting underneath. Point it somewhere else with
-`EXAMFX_RECOMMENDATIONS_TAB` if the name should differ.
+`EXAMFX_RECOMMENDATIONS_TAB` if the name should differ. The pacing tab has the
+same escape hatch in `EXAMFX_PACING_TAB`.
 
 ---
 

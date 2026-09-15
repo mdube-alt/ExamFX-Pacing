@@ -122,8 +122,27 @@ def parse_budgets(values: list[list], year: int, month: int) -> dict[BudgetKey, 
     return budgets
 
 
-def parse_notes(values: list[list]) -> dict[tuple[int, str, str], str]:
-    """Recover analyst notes from an existing pacing tab, keyed by week/line."""
+def _month_of_dates_cell(value: Any) -> int | None:
+    """The month from a Dates cell such as ``9/1 - 9/6``."""
+    match = re.match(r"\s*(\d{1,2})\s*/", str(value or ""))
+    if not match:
+        return None
+    month = int(match.group(1))
+    return month if 1 <= month <= 12 else None
+
+
+def parse_notes(
+    values: list[list], month: int | None = None
+) -> dict[tuple[int, str, str], str]:
+    """Recover analyst notes from an existing pacing tab, keyed by week/line.
+
+    Notes are keyed by week number, category and channel, none of which say
+    which month they belong to. Left unfiltered, a note on August's week 4
+    would be copied onto September's week 4 when the tab is rebuilt for the
+    new month. Passing ``month`` keeps only notes whose Dates cell is in that
+    month. A row whose month cannot be read is kept, since dropping a note
+    loses it -- the tab is cleared on every write.
+    """
     notes: dict[tuple[int, str, str], str] = {}
     if not values:
         return notes
@@ -141,6 +160,10 @@ def parse_notes(values: list[list]) -> dict[tuple[int, str, str], str]:
         match = re.search(r"(\d+)", str(_cell(row, 0)))
         if not match:
             continue
+        if month is not None:
+            row_month = _month_of_dates_cell(_cell(row, 1))
+            if row_month is not None and row_month != month:
+                continue
         key = (int(match.group(1)), str(_cell(row, 2)).strip(), str(_cell(row, 3)).strip())
         notes[key] = note
     return notes

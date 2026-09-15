@@ -12,6 +12,7 @@ from examfx_pacing.recommendations import (
     CampaignDriver,
     Recommendation,
 )
+from examfx_pacing.config import load_config
 from examfx_pacing.sheets import SheetsClient
 
 
@@ -241,7 +242,6 @@ class _RecordingSheets:
 
 
 def _run_with(sheets, **kwargs):
-    from examfx_pacing.config import load_config
     from examfx_pacing.run import run_pacing
     from examfx_pacing.spend import CsvSpendSource
 
@@ -262,7 +262,7 @@ def test_run_pacing_writes_both_tabs():
     sheets = _RecordingSheets()
     result = _run_with(sheets)
 
-    assert sheets.pacing_calls == ["WoW Pacing"]
+    assert sheets.pacing_calls == [load_config().pacing_tab]
     assert len(sheets.recommendation_calls) == 1
     tab, count, as_of = sheets.recommendation_calls[0]
     assert tab == "Budget Recommendations"
@@ -275,6 +275,6 @@ def test_recommendations_write_can_be_turned_off():
     sheets = _RecordingSheets()
     result = _run_with(sheets, write_recommendations=False)
 
-    assert sheets.pacing_calls == ["WoW Pacing"], "the pacing tab is still written"
+    assert sheets.pacing_calls == [load_config().pacing_tab], "the pacing tab is still written"
     assert sheets.recommendation_calls == []
     assert result.recommendation_rows_written == 0
