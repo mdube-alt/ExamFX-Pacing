@@ -209,6 +209,8 @@ class WindsorSpendSource:
         url = self._build_url(source, date_from, date_to, fields)
         redacted = url.replace(self.api_key, "***")
         last_error: Exception | None = None
+        #: Distinguishes "the request failed" from "the channel spent nothing".
+        saw_transport_error = False
 
         def scrub(value) -> str:
             """Never let the API key reach a log line or an error message."""
@@ -219,6 +221,7 @@ class WindsorSpendSource:
                 rows = self._request(url)
             except (urllib.error.URLError, WindsorError, TimeoutError) as exc:
                 last_error = exc
+                saw_transport_error = True
                 log.warning(
                     "Windsor %s attempt %d/%d failed: %s",
                     source.connector, attempt, self.max_attempts, scrub(exc),
@@ -245,6 +248,17 @@ class WindsorSpendSource:
                     min(attempt - 1, len(self.backoff_seconds) - 1)
                 ]
                 time.sleep(delay)
+
+        # A channel that simply had no spend must not fail the run. LinkedIn
+        # routinely reports nothing, and a budget of zero is a normal state.
+        # The retries above still cover Windsor's cold starts; only a genuine
+        # transport failure is fatal.
+        if not saw_transport_error:
+            log.warning(
+                "Windsor %s reported no rows for %s -> %s; treating as zero spend",
+                source.connector, date_from, date_to,
+            )
+            return []
 
         raise WindsorError(
             f"Windsor failed after {self.max_attempts} attempts\n"

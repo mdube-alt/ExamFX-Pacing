@@ -46,12 +46,19 @@ DEFAULT_CHANNELS: tuple[ChannelSource, ...] = (
     ChannelSource("Google", "google_ads", "997-052-9086"),
     ChannelSource("Bing", "bing", "180013684"),
     ChannelSource("Meta", "facebook", "253084931845072"),
-    ChannelSource("LinkedIn", "linkedin", "518468129"),
+    # LinkedIn is paused and is not being run, so it is not pulled. To resume,
+    # move it back here from MANUAL_CHANNELS:
+    #     ChannelSource("LinkedIn", "linkedin", "518468129"),
 )
 
-#: Channels that exist in the tracker but have no Windsor connector. Rows for
-#: these are preserved as-is rather than overwritten with zero.
-MANUAL_CHANNELS: tuple[str, ...] = ("Programmatic",)
+#: Channels present in the tracker that this tool does not pull. Rows for these
+#: are preserved as-is rather than overwritten with zero, and a line that has a
+#: budget is reported as still needing a manual update -- so if LinkedIn is
+#: funded again without being re-enabled above, it is flagged rather than
+#: silently ignored.
+#:
+#: Programmatic has no Windsor connector. LinkedIn is paused.
+MANUAL_CHANNELS: tuple[str, ...] = ("Programmatic", "LinkedIn")
 
 
 @dataclass
