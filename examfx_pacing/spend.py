@@ -169,6 +169,32 @@ class WindsorSpendSource:
             raise WindsorError(f"Windsor returned non-JSON: {body[:200]!r}") from exc
         return _extract_rows(payload)
 
+    def probe(self, source: ChannelSource, day: date) -> tuple[bool, str]:
+        """One cheap request to prove the key and account work.
+
+        Returns ``(ok, detail)``. A valid key that simply has no spend for the
+        day is a pass -- LinkedIn routinely reports nothing -- so an empty
+        result set is reported as reachable rather than broken. Unlike
+        ``_fetch_channel`` this never retries: a preflight should fail fast.
+        """
+        url = self._build_url(source, day, day, [source.campaign_field, source.spend_field])
+
+        def scrub(value) -> str:
+            return str(value).replace(self.api_key, "***")
+
+        try:
+            rows = self._request(url)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                return False, f"HTTP {exc.code} - the API key was rejected"
+            return False, f"HTTP {exc.code} - {scrub(exc.reason)}"
+        except (urllib.error.URLError, WindsorError, TimeoutError) as exc:
+            return False, scrub(exc)
+
+        if not rows:
+            return True, "reachable, no spend reported for the probe day"
+        return True, f"reachable, {len(rows)} row(s) for the probe day"
+
     def _fetch_channel(
         self,
         source: ChannelSource,

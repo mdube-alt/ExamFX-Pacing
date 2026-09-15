@@ -21,7 +21,29 @@ __all__ = [
     "Recommendation",
     "CampaignDriver",
     "RecommendationSettings",
+    "REC_HEADERS",
     "build_recommendations",
+]
+
+#: Column order written to the recommendations tab.
+REC_HEADERS = [
+    "As Of",
+    "Category",
+    "Channel",
+    "Action",
+    "Priority",
+    "Monthly Budget",
+    "Spend to Date",
+    "Remaining",
+    "Days Left",
+    "Current Daily",
+    "Suggested Daily",
+    "Daily Change",
+    "Projected Month-End",
+    "Projected Variance",
+    "Projected Variance %",
+    "Recommendation",
+    "Top Campaigns",
 ]
 
 
@@ -136,6 +158,47 @@ class Recommendation:
             f"${self.projected_month_end:,.0f} vs ${self.monthly_budget:,.0f} budget "
             f"({self.projected_variance_pct:+.0%})"
         )
+
+    def driver_summary(self) -> str:
+        """The campaigns behind this line, one per line, for a single cell."""
+        parts = []
+        for driver in self.drivers:
+            pace = ""
+            if driver.recent_rate_index is not None:
+                if driver.recent_rate_index >= 1.15:
+                    pace = f", accelerating {driver.recent_rate_index:.2f}x"
+                elif driver.recent_rate_index <= 0.85:
+                    pace = f", slowing {driver.recent_rate_index:.2f}x"
+            parts.append(
+                f"{driver.campaign}: ${driver.spend:,.2f} "
+                f"({driver.share_of_line:.0%} of line{pace})"
+            )
+        return "\n".join(parts)
+
+    def as_sheet_row(self, as_of: date) -> list:
+        """Flatten to a row for the recommendations tab, matching REC_HEADERS."""
+        change = self.daily_change_pct
+        # Lines with no budget have no meaningful target daily spend.
+        targeted = self.action not in (Action.ALLOCATE_OR_PAUSE, Action.OVER_BUDGET)
+        return [
+            as_of.isoformat(),
+            self.category,
+            self.channel,
+            self.action,
+            "Urgent" if self.urgent else "Normal",
+            round(self.monthly_budget, 2),
+            round(self.spend_to_date, 2),
+            round(self.remaining_budget, 2),
+            self.days_remaining,
+            round(self.current_daily, 2),
+            round(self.suggested_daily, 2) if targeted else "",
+            round(change, 4) if (targeted and change is not None) else "",
+            round(self.projected_month_end, 2),
+            self.projected_variance,
+            round(self.projected_variance_pct, 4) if self.monthly_budget else "",
+            self.headline,
+            self.driver_summary(),
+        ]
 
 
 def _drivers_for_line(

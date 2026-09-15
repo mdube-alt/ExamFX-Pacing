@@ -11,6 +11,7 @@ __all__ = [
     "DEFAULT_CHANNELS",
     "MANUAL_CHANNELS",
     "SPREADSHEET_ID",
+    "RECOMMENDATIONS_TAB",
     "load_config",
 ]
 
@@ -22,6 +23,9 @@ PACING_TAB = "WoW Pacing"
 
 #: Tab holding per-month, per-category/channel budgets.
 TRACKER_TAB = "2026 Monthly Tracker"
+
+#: Tab the budget recommendations are written to. Created if it does not exist.
+RECOMMENDATIONS_TAB = "Budget Recommendations"
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,7 @@ class PacingConfig:
     spreadsheet_id: str = SPREADSHEET_ID
     pacing_tab: str = PACING_TAB
     tracker_tab: str = TRACKER_TAB
+    recommendations_tab: str = RECOMMENDATIONS_TAB
     channels: tuple[ChannelSource, ...] = DEFAULT_CHANNELS
     manual_channels: tuple[str, ...] = MANUAL_CHANNELS
     windsor_api_key: str | None = None
@@ -73,6 +78,9 @@ def load_config(**overrides) -> PacingConfig:
         spreadsheet_id=os.environ.get("EXAMFX_SPREADSHEET_ID", SPREADSHEET_ID),
         pacing_tab=os.environ.get("EXAMFX_PACING_TAB", PACING_TAB),
         tracker_tab=os.environ.get("EXAMFX_TRACKER_TAB", TRACKER_TAB),
+        recommendations_tab=os.environ.get(
+            "EXAMFX_RECOMMENDATIONS_TAB", RECOMMENDATIONS_TAB
+        ),
         windsor_api_key=os.environ.get("WINDSOR_API_KEY"),
         windsor_base_url=os.environ.get(
             "WINDSOR_BASE_URL", "https://connectors.windsor.ai"
