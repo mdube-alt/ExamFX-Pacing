@@ -12,8 +12,8 @@ by how much, and which campaigns are driving the variance.
 
 1. Reads the month's budgets from the **2026 Monthly Tracker** tab (it finds the
    month's Budget column by its date header, so no cell references to maintain).
-2. Pulls day-by-day campaign spend from Windsor.ai for Google Ads, Bing, Meta and
-   LinkedIn - one request per platform for the whole month.
+2. Pulls day-by-day campaign spend from Windsor.ai for Google Ads, Bing and
+   Meta - one request per platform for the whole month.
 3. Maps every campaign to a business line (Insurance / Securities / Adjusters /
    Brand) and rolls spend up by line and channel.
 4. Computes, for each week, the cumulative pacing goal (`monthly budget x share of
@@ -88,9 +88,9 @@ missing.
    secret**, named `WINDSOR_API_KEY`.
 
 The key must be on an account that can see all four ad accounts - Google Ads
-`997-052-9086`, Bing `180013684`, Meta `253084931845072` and LinkedIn
-`518468129`. The preflight probes each one separately, so a connector that is
-not shared with your key shows up by name.
+`997-052-9086`, Bing `180013684` and Meta `253084931845072`. The preflight
+probes each one separately, so a connector that is not shared with your key
+shows up by name.
 
 **2. `GOOGLE_SERVICE_ACCOUNT_JSON`**
 
@@ -125,15 +125,15 @@ Credential preflight
 ====================
 
   [PASS] Windsor / Google           reachable, 13 row(s) for the probe day
-  [PASS] Windsor / LinkedIn         reachable, no spend reported for the probe day
+  [PASS] Windsor / Meta             reachable, no spend reported for the probe day
   [PASS] Spreadsheet access         opened the tracker as pacing@proj.iam.gserviceaccount.com
   [PASS] Tab '2026 Monthly Tracker' budgets are read from here
   [PASS] Tab 'WoW Pacing'           the pacing table is written here
   [PASS] Write access               the service account can edit the tracker
 ```
 
-A channel reporting no spend is a pass, not a failure - LinkedIn routinely has
-none. Write access is proven with an empty batch update, so the check never
+A channel reporting no spend is a pass, not a failure - a paused line legitimately
+has none. Write access is proven with an empty batch update, so the check never
 touches a cell.
 
 The same check runs at the start of every scheduled run, so a missing or
@@ -250,10 +250,16 @@ Both are covered by tests in `tests/test_golden_august_2026.py`.
 ## Channels with no data feed
 
 A channel that reports no spend at all is recorded as zero, not treated as a
-failure. LinkedIn routinely has none, and a line with no budget having no spend
-is a normal state, so one quiet connector must not abort the whole run. The
+failure. A paused or unfunded line legitimately has none, so one quiet connector
+must not abort the whole run. The
 retries still happen first, in case it was a Windsor cold start; only a genuine
 transport failure stops the run.
+
+`LinkedIn` is paused and is not pulled. It is listed as a manual channel, so if
+it is given a budget again without being re-enabled it is reported rather than
+silently ignored. To resume it, move its `ChannelSource` back into
+`DEFAULT_CHANNELS` in `examfx_pacing/config.py` and drop it from
+`MANUAL_CHANNELS`.
 
 `Programmatic` has a budget in the tracker but no Windsor connector. Rather than
 writing a misleading `$0`, those lines are left out of the table and reported
