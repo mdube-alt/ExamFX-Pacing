@@ -79,13 +79,27 @@ def test_a_rejected_key_names_the_account_to_check(monkeypatch):
 # --- Sheets ------------------------------------------------------------------
 
 
+class _Resp:
+    def __init__(self, status):
+        self.status = status
+
+
+class _HttpError(Exception):
+    """Shaped like googleapiclient's HttpError: a resp with a status."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.resp = _Resp(status)
+
+
 class _FakeSheets:
     """Enough of SheetsClient for the preflight to exercise every branch."""
 
-    def __init__(self, titles, *, get_error=None, write_error=None):
+    def __init__(self, titles, *, get_error=None, write_error=None, title="Tracker"):
         self._titles = titles
         self._get_error = get_error
         self._write_error = write_error
+        self._title = title
         self.batch_bodies = []
         self.service = self
 
@@ -107,10 +121,16 @@ class _FakeSheets:
             if self._get_error:
                 raise self._get_error
             return {
-                "sheets": [{"properties": {"title": t}} for t in self._titles]
+                "properties": {"title": self._title},
+                "sheets": [{"properties": {"title": t}} for t in self._titles],
             }
         if self._write_error:
             raise self._write_error
+        # The real API rejects an empty request list with 400, whatever the
+        # caller's permissions. The fake must too, or it hides that bug.
+        body = self.batch_bodies[-1]
+        if not body.get("requests"):
+            raise _HttpError(400, "Must specify at least one request.")
         return {}
 
 
@@ -134,13 +154,35 @@ def test_a_healthy_spreadsheet_passes_every_check(key_file):
     assert "pacing@proj.iam.gserviceaccount.com" in results["Spreadsheet access"].detail
 
 
-def test_the_write_check_changes_nothing(key_file):
-    """Write access is proven with an empty batch, not by touching a cell."""
+def test_the_write_check_leaves_every_value_alone(key_file):
+    """The probe rewrites the title with the title it already has.
+
+    An empty request list is rejected with 400 whatever the permissions, so
+    it could never tell Viewer from Editor. This is the smallest request that
+    needs the write scope and changes nothing.
+    """
+    config = _config(google_credentials_file=key_file)
+    sheets = _FakeSheets([config.tracker_tab, config.pacing_tab], title="ExamFX Tracker")
+
+    results = _by_name(check_sheets(config, sheets))
+    assert results["Write access"].ok
+
+    assert len(sheets.batch_bodies) == 1
+    requests = sheets.batch_bodies[0]["requests"]
+    assert len(requests) == 1
+    update = requests[0]["updateSpreadsheetProperties"]
+    assert update["fields"] == "title", "only the title may be in the field mask"
+    assert update["properties"] == {"title": "ExamFX Tracker"}, "same title back"
+
+
+def test_an_empty_batch_would_be_rejected_by_the_api(key_file):
+    """Guards the bug this replaced: the old probe always 400ed."""
     config = _config(google_credentials_file=key_file)
     sheets = _FakeSheets([config.tracker_tab, config.pacing_tab])
-
-    check_sheets(config, sheets)
-    assert sheets.batch_bodies == [{"requests": []}]
+    sheets.batch_bodies.append({"requests": []})
+    sheets.batchUpdate(spreadsheetId="x", body={"requests": []})
+    with pytest.raises(_HttpError):
+        sheets.execute()
 
 
 def test_an_unshared_sheet_advises_sharing_with_the_service_account(key_file):
@@ -227,19 +269,6 @@ def test_all_clear_says_so(key_file, monkeypatch):
 
 
 # --- Diagnosing why the spreadsheet would not open -----------------------------
-
-
-class _Resp:
-    def __init__(self, status):
-        self.status = status
-
-
-class _HttpError(Exception):
-    """Shaped like googleapiclient's HttpError: a resp with a status."""
-
-    def __init__(self, status, message):
-        super().__init__(message)
-        self.resp = _Resp(status)
 
 
 SERVICE_DISABLED = (

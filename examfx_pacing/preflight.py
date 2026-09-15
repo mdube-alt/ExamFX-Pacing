@@ -148,13 +148,18 @@ def check_sheets(config: PacingConfig, sheets) -> list[CheckResult]:
 
     # Building the client is what surfaces a missing or malformed key file.
     try:
-        titles = {
-            sheet["properties"]["title"]
-            for sheet in sheets.service.spreadsheets()
-            .get(spreadsheetId=config.spreadsheet_id, fields="sheets.properties.title")
+        metadata = (
+            sheets.service.spreadsheets()
+            .get(
+                spreadsheetId=config.spreadsheet_id,
+                fields="properties.title,sheets.properties.title",
+            )
             .execute()
-            .get("sheets", [])
+        )
+        titles = {
+            sheet["properties"]["title"] for sheet in metadata.get("sheets", [])
         }
+        document_title = metadata.get("properties", {}).get("title")
     except SheetsError as exc:
         return [
             CheckResult(
@@ -197,15 +202,41 @@ def check_sheets(config: PacingConfig, sheets) -> list[CheckResult]:
             )
         )
 
-    # An empty batchUpdate changes nothing but still needs the write scope,
-    # so it tells us Editor access is real without touching a single cell.
+    # Proving Editor access needs a request the API will actually accept: an
+    # empty `requests` list is rejected with 400 regardless of permission, so
+    # it can never distinguish Viewer from Editor. Setting the title to the
+    # title it already has is the smallest request that needs the write scope
+    # and leaves every value, tab and cell exactly as it was.
+    if document_title is None:
+        results.append(
+            CheckResult(
+                "Write access",
+                False,
+                "could not read the spreadsheet title, so write access was not tested",
+                share_fix,
+            )
+        )
+        return results
+
     try:
         sheets.service.spreadsheets().batchUpdate(
-            spreadsheetId=config.spreadsheet_id, body={"requests": []}
+            spreadsheetId=config.spreadsheet_id,
+            body={
+                "requests": [
+                    {
+                        "updateSpreadsheetProperties": {
+                            "properties": {"title": document_title},
+                            "fields": "title",
+                        }
+                    }
+                ]
+            },
         ).execute()
     except Exception as exc:
         results.append(
-            CheckResult("Write access", False, f"write was refused: {exc}", share_fix)
+            CheckResult(
+                "Write access", False, f"write was refused: {_open_failure(exc)}", share_fix
+            )
         )
     else:
         results.append(
