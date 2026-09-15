@@ -224,3 +224,68 @@ def test_all_clear_says_so(key_file, monkeypatch):
 
     assert all(r.ok for r in results)
     assert "All checks passed" in render_preflight(results)
+
+
+# --- Diagnosing why the spreadsheet would not open -----------------------------
+
+
+class _Resp:
+    def __init__(self, status):
+        self.status = status
+
+
+class _HttpError(Exception):
+    """Shaped like googleapiclient's HttpError: a resp with a status."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.resp = _Resp(status)
+
+
+SERVICE_DISABLED = (
+    'Google Sheets API has not been used in project 892115308099 before or it '
+    'is disabled. Enable it by visiting '
+    'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=892115308099 '
+    'then retry.'
+)
+
+
+def test_a_disabled_api_is_not_reported_as_a_sharing_problem(key_file):
+    """The first real setup returned this, and 'share as Editor' was wrong."""
+    config = _config(google_credentials_file=key_file)
+    sheets = _FakeSheets([], get_error=_HttpError(403, SERVICE_DISABLED))
+
+    result = check_sheets(config, sheets)[0]
+    assert not result.ok
+    assert result.detail == "the Google Sheets API is not enabled for this project"
+    assert "Enable the Google Sheets API" in result.fix
+    assert "as an Editor" not in result.fix
+    assert "project=892115308099" in result.fix, "the activation link is quoted"
+
+
+def test_a_plain_403_still_advises_sharing(key_file):
+    config = _config(google_credentials_file=key_file)
+    sheets = _FakeSheets([], get_error=_HttpError(403, "The caller does not have permission"))
+
+    result = check_sheets(config, sheets)[0]
+    assert result.detail == "the service account was refused access (403)"
+    assert "pacing@proj.iam.gserviceaccount.com" in result.fix
+
+
+def test_a_404_covers_both_an_unshared_sheet_and_a_wrong_id(key_file):
+    """Sheets reports an unshared spreadsheet as missing, not as forbidden."""
+    config = _config(google_credentials_file=key_file)
+    sheets = _FakeSheets([], get_error=_HttpError(404, "Requested entity was not found."))
+
+    result = check_sheets(config, sheets)[0]
+    assert result.detail == "the spreadsheet was not found (404)"
+    assert "spreadsheet ID is wrong" in result.fix
+    assert "as an Editor" in result.fix
+
+
+def test_an_unrecognised_error_is_passed_through(key_file):
+    config = _config(google_credentials_file=key_file)
+    sheets = _FakeSheets([], get_error=RuntimeError("socket hung up"))
+
+    result = check_sheets(config, sheets)[0]
+    assert "socket hung up" in result.detail

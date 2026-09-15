@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -47,6 +48,51 @@ def _service_account_email(credentials_file: str | None) -> str | None:
     except (OSError, json.JSONDecodeError):
         return None
     return data.get("client_email")
+
+
+def _status_of(exc) -> int | None:
+    """HTTP status from a googleapiclient HttpError, if that is what this is."""
+    response = getattr(exc, "resp", None)
+    status = getattr(response, "status", None)
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _open_failure(exc) -> str:
+    """A one-line reason, instead of Google's paragraph-long error body."""
+    status = _status_of(exc)
+    text = str(exc)
+    if status == 403 and "has not been used in project" in text:
+        return "the Google Sheets API is not enabled for this project"
+    if status == 403:
+        return "the service account was refused access (403)"
+    if status == 404:
+        return "the spreadsheet was not found (404)"
+    return f"could not open the spreadsheet: {exc}"
+
+
+def _open_fix(exc, share_fix: str) -> str:
+    """The actual remedy. A disabled API is not a sharing problem."""
+    status = _status_of(exc)
+    text = str(exc)
+    if status == 403 and "has not been used in project" in text:
+        url = ""
+        match = re.search(r"https://console\.developers\.google\.com/\S*?sheets\S*?(?=[\s\"'])", text)
+        if match:
+            url = f" Enable it here: {match.group(0)}"
+        return (
+            "Enable the Google Sheets API for the service account's project, then "
+            "wait a minute for it to propagate." + url
+        )
+    if status == 404:
+        # Sheets reports an unshared spreadsheet as missing, not as forbidden.
+        return (
+            "Either the spreadsheet ID is wrong, or it is not shared at all. "
+            + share_fix
+        )
+    return share_fix
 
 
 def check_windsor(config: PacingConfig, probe_day: date | None = None) -> list[CheckResult]:
@@ -122,10 +168,7 @@ def check_sheets(config: PacingConfig, sheets) -> list[CheckResult]:
     except Exception as exc:  # the Google client raises its own error types
         return [
             CheckResult(
-                "Spreadsheet access",
-                False,
-                f"could not open the spreadsheet: {exc}",
-                share_fix,
+                "Spreadsheet access", False, _open_failure(exc), _open_fix(exc, share_fix)
             )
         ]
 
