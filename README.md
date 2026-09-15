@@ -249,6 +249,12 @@ Both are covered by tests in `tests/test_golden_august_2026.py`.
 
 ## Channels with no data feed
 
+A channel that reports no spend at all is recorded as zero, not treated as a
+failure. LinkedIn routinely has none, and a line with no budget having no spend
+is a normal state, so one quiet connector must not abort the whole run. The
+retries still happen first, in case it was a Windsor cold start; only a genuine
+transport failure stops the run.
+
 `Programmatic` has a budget in the tracker but no Windsor connector. Rather than
 writing a misleading `$0`, those lines are left out of the table and reported
 under "Needs attention" as still needing a manual update. Add a channel to
