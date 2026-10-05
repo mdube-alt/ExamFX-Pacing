@@ -11,6 +11,7 @@ from pathlib import Path
 from .categories import CategoryMapper, load_rules
 from .config import load_config
 from .recommendations import RecommendationSettings
+from .dashboard import render_dashboard
 from .preflight import render_preflight, run_preflight
 from .report import render_csv, render_recommendations, render_text
 from .run import run_pacing
@@ -59,6 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--check-auth", action="store_true",
         help="Verify the Windsor key and Google access, then exit without pacing.",
+    )
+    parser.add_argument(
+        "--dashboard", metavar="PATH",
+        help="Write the run as a self-contained HTML dashboard.",
     )
     parser.add_argument(
         "--csv", metavar="PATH",
@@ -156,6 +161,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_recommendations:
         print()
         print(render_recommendations(result.recommendations))
+
+    if args.dashboard:
+        Path(args.dashboard).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.dashboard).write_text(
+            render_dashboard(result.report, result.recommendations), encoding="utf-8"
+        )
+        log.info("wrote the dashboard to %s", args.dashboard)
 
     if args.csv:
         Path(args.csv).write_text(render_csv(result.report), encoding="utf-8")

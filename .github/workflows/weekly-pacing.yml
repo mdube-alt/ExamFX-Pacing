@@ -13,7 +13,7 @@ on:
         description: "Treat this date as today (YYYY-MM-DD). Defaults to today."
         required: false
       dry_run:
-        description: "Print the table without writing to the spreadsheet."
+        description: "Build the dashboard but do not publish it."
         type: boolean
         default: false
       check_auth_only:
@@ -21,9 +21,15 @@ on:
         type: boolean
         default: false
 
+# Pages deployments must not overlap, and a pacing run is cheap to redo.
 concurrency:
   group: examfx-pacing
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   pace:
@@ -72,7 +78,9 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Update the pacing tab
+      # The dashboard is the deliverable now; the spreadsheet tabs are no
+      # longer written on a schedule. `--write` still does that by hand.
+      - name: Build the dashboard
         if: ${{ !inputs.check_auth_only }}
         env:
           WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
@@ -82,8 +90,8 @@ jobs:
           python -m examfx_pacing \
             ${{ inputs.month && format('--month {0}', inputs.month) || '' }} \
             ${{ inputs.as_of && format('--as-of {0}', inputs.as_of) || '' }} \
-            ${{ inputs.dry_run && '--dry-run' || '--write' }} \
-            --csv pacing.csv | tee summary.txt
+            --dashboard site/index.html \
+            --csv site/pacing.csv | tee summary.txt
 
       - name: Publish the summary
         if: ${{ always() && !inputs.check_auth_only }}
@@ -101,11 +109,29 @@ jobs:
         with:
           name: pacing-${{ github.run_id }}
           path: |
-            pacing.csv
+            site/pacing.csv
             summary.txt
           if-no-files-found: ignore
           retention-days: 90
 
+      - name: Package the dashboard for Pages
+        if: ${{ !inputs.check_auth_only && !inputs.dry_run }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
       - name: Remove credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/sa.json"
+
+  # Separate job so the dashboard is only published once the run succeeded.
+  publish:
+    needs: pace
+    if: ${{ !inputs.check_auth_only && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

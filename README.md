@@ -1,7 +1,7 @@
 # ExamFX Weekly Pacing
 
-Builds the **Pacing - Claude** tab of the *ExamFX x HMDE - Budget Tracker* from live
-ad-platform spend, so nobody has to pull each platform by hand on Monday morning.
+Publishes a weekly **pacing dashboard** for ExamFX from live ad-platform spend,
+so nobody has to pull each platform by hand on Monday morning.
 
 It also produces **budget recommendations** - which lines to raise, cut or pause,
 by how much, and which campaigns are driving the variance.
@@ -18,8 +18,7 @@ by how much, and which campaigns are driving the variance.
    Brand) and rolls spend up by line and channel.
 4. Computes, for each week, the cumulative pacing goal (`monthly budget x share of
    the month elapsed`), actual spend to date, variance and Over/Under status.
-5. Writes the rebuilt table to the **Pacing - Claude** tab, preserving the Notes
-   column. The hand-maintained **WoW Pacing** tab is never touched.
+5. Renders a self-contained HTML dashboard and publishes it to GitHub Pages.
 6. Writes budget recommendations - which lines to raise, cut or pause, and the
    campaigns driving each - to a **Budget Recommendations** tab, and prints the
    same thing to the terminal.
@@ -40,9 +39,9 @@ pip install -r requirements-dev.txt
 export WINDSOR_API_KEY=...
 python -m examfx_pacing --dry-run
 
-# Rebuild the pacing tab for real.
+# Build the dashboard locally and open it.
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-python -m examfx_pacing --write
+python -m examfx_pacing --dashboard site/index.html
 ```
 
 ### Useful flags
@@ -51,7 +50,8 @@ python -m examfx_pacing --write
 |---|---|
 | `--month 2026-08` | Pace a specific month (defaults to the month containing `--as-of`). |
 | `--as-of 2026-08-26` | Pretend it is this date. Useful for backfills and for re-running a past week. |
-| `--write` | Write the result to the pacing tab. Without it nothing is written. |
+| `--dashboard FILE` | Write the run as a self-contained HTML dashboard. |
+| `--write` | Also write the spreadsheet tabs. Off by default; the schedule no longer uses it. |
 | `--csv pacing.csv` | Also save the full table as CSV. |
 | `--spend-csv FILE` | Read spend from a CSV instead of Windsor (backfills, or when Windsor is down). |
 | `--budgets FILE` | Read budgets from JSON instead of the tracker tab (lets you run with no Sheets access). |
@@ -64,12 +64,22 @@ python -m examfx_pacing --write
 
 ## Scheduling
 
-`.github/workflows/weekly-pacing.yml` runs every **Monday at 13:00 UTC** (9am ET)
-and writes the tab. It can also be run on demand from the Actions tab, with an
-optional month, as-of date and dry-run toggle. Each run publishes the table as a
-job summary and uploads the CSV as an artifact.
+`.github/workflows/weekly-pacing.yml` runs every **Monday at 13:00 UTC** (9am ET),
+builds the dashboard and publishes it to GitHub Pages. It can also be run on
+demand from the Actions tab, with an optional month, as-of date, a `dry_run`
+toggle that builds without publishing, and `check_auth_only` for a credential
+check on its own.
 
-Two repository secrets are required:
+The dashboard is published only when the run succeeds, so a failed Monday leaves
+the previous week's dashboard standing rather than replacing it with a broken one.
+
+### Enabling GitHub Pages (one-time)
+
+In the repository: **Settings -> Pages -> Build and deployment -> Source:
+GitHub Actions**. No branch to pick; the workflow supplies the artifact. Until
+this is set, the publish job fails while the pacing run itself still succeeds.
+
+Three repository secrets and settings are involved:
 
 | Secret | Value |
 |---|---|
@@ -143,6 +153,40 @@ read-only credential fails with a named fix rather than a traceback. To run only
 the check, trigger the workflow from the Actions tab with **check_auth_only**.
 
 ---
+
+## The dashboard
+
+One static HTML file, no external requests - no CDN, no fonts to fetch, nothing
+to go stale or get blocked. Charts are inline SVG rather than a charting library
+for the same reason.
+
+| Section | What it shows |
+|---|---|
+| Stat tiles | Month elapsed, spend to date, pacing goal, variance. |
+| Cumulative pace | Goal against actual, week by week, with a hover readout. |
+| Pacing by line | Every category/channel with budget, goal, actual, variance and status. |
+| Budget recommendations | One card per line, biggest lever first, with the campaigns driving it. |
+| Needs attention | Unmapped campaigns, unbudgeted spend, lines with no data source. |
+
+Colours come from a validated data-viz palette and were checked with the
+palette validator in both light and dark mode: lightness band, chroma floor,
+colour-blind separation, normal-vision separation and contrast all pass. Dark
+mode is a separate set of steps for the dark surface, not an inverted flip.
+
+Status never rests on colour alone - every status carries its word (`Over` /
+`Under`), and each recommendation carries an arrow glyph and a verb as well as a
+colour. The raw figures are in a table view in the footer.
+
+## The spreadsheet
+
+The schedule no longer writes the tracker. `--write` still updates the
+**Pacing - Claude** and **Budget Recommendations** tabs if you want them, and the
+hand-maintained **WoW Pacing** tab is never touched either way.
+
+The one thing the dashboard does not carry over is the **Notes** column. Notes
+lived in the pacing tab and were matched back by week, category and channel on
+each rebuild; a published page has nowhere for an analyst to type. If notes
+matter, run with `--write` as well and keep using the tab.
 
 ## How the numbers are defined
 
@@ -296,6 +340,7 @@ reported ad spend.
 | `examfx_pacing/pacing.py` | Building the pacing table. |
 | `examfx_pacing/recommendations.py` | Budget actions and campaign drivers. |
 | `examfx_pacing/report.py` | Terminal and CSV rendering. |
+| `examfx_pacing/dashboard.py` | The HTML dashboard. |
 | `examfx_pacing/preflight.py` | Credential checks behind `--check-auth`. |
 | `examfx_pacing/run.py` | Orchestration. |
 | `examfx_pacing/cli.py` | Command line interface. |
