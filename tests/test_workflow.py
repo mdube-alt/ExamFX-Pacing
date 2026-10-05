@@ -13,9 +13,13 @@ WORKFLOW = Path(".github/workflows/weekly-pacing.yml")
 
 
 @pytest.fixture(scope="module")
-def steps():
-    parsed = yaml.safe_load(WORKFLOW.read_text())
-    return parsed["jobs"]["pace"]["steps"]
+def workflow():
+    return yaml.safe_load(WORKFLOW.read_text())
+
+
+@pytest.fixture(scope="module")
+def steps(workflow):
+    return workflow["jobs"]["pace"]["steps"]
 
 
 def _named(steps, name):
@@ -40,7 +44,7 @@ def test_piped_steps_set_pipefail(steps):
 
 def test_the_preflight_runs_before_the_write(steps):
     names = [step.get("name") for step in steps]
-    assert names.index("Verify credentials") < names.index("Update the pacing tab")
+    assert names.index("Verify credentials") < names.index("Build the dashboard")
 
 
 def test_a_missing_service_account_does_not_kill_the_job_early(steps):
@@ -50,8 +54,36 @@ def test_a_missing_service_account_does_not_kill_the_job_early(steps):
     assert "exit 1" not in run
 
 
-def test_check_auth_only_skips_the_write(steps):
-    assert _named(steps, "Update the pacing tab")["if"] == "${{ !inputs.check_auth_only }}"
+def test_check_auth_only_skips_the_run(steps):
+    assert _named(steps, "Build the dashboard")["if"] == "${{ !inputs.check_auth_only }}"
+
+
+def test_the_dashboard_is_only_published_after_a_successful_run(workflow):
+    """A broken run must not replace a good dashboard with a broken one."""
+    publish = workflow["jobs"]["publish"]
+    assert publish["needs"] == "pace"
+    assert "check_auth_only" in publish["if"] and "dry_run" in publish["if"]
+
+
+def test_a_dry_run_builds_but_does_not_publish(steps):
+    package = _named(steps, "Package the dashboard for Pages")
+    assert "!inputs.dry_run" in package["if"]
+    # The build step itself has no dry-run guard: building is always safe.
+    assert "dry_run" not in _named(steps, "Build the dashboard")["if"]
+
+
+def test_pages_permissions_are_declared(workflow):
+    perms = workflow["permissions"]
+    assert perms["pages"] == "write"
+    assert perms["id-token"] == "write"
+    assert perms["contents"] == "read", "the job never needs to push"
+
+
+def test_the_schedule_no_longer_writes_the_spreadsheet(steps):
+    """The sheet write moved behind --write, which the schedule stopped using."""
+    run = _named(steps, "Build the dashboard")["run"]
+    assert "--dashboard" in run
+    assert "--write" not in run
 
 
 def test_credentials_are_always_removed(steps):
