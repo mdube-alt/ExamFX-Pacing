@@ -413,8 +413,15 @@ def render_dashboard(
     *,
     generated_at: date | None = None,
     source_note: str = "",
+    standalone: bool = True,
 ) -> str:
-    """Build the whole dashboard as one HTML string."""
+    """Build the dashboard as one HTML string.
+
+    ``standalone`` wraps the page in its own document skeleton, for a file you
+    open directly. Published as an Artifact the platform supplies that
+    skeleton, so pass ``standalone=False`` and emit just the title, styles and
+    body -- a nested ``<html>`` would be dropped or duplicated.
+    """
     recommendations = recommendations or []
     rows = _latest_rows(report)
     labels, goals, actuals = _cumulative_series(report)
@@ -433,12 +440,7 @@ def render_dashboard(
         for r in rows
     ]
 
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ExamFX pacing - {_esc(month)}</title>
+    page = f"""<title>ExamFX Pacing</title>
 <style>
 :root {{
   color-scheme: light;
@@ -608,8 +610,6 @@ details.data pre {{ overflow-x: auto; font-size: 0.75rem; color: var(--secondary
   .rec {{ transition: border-color .15s ease; }}
 }}
 </style>
-</head>
-<body>
 <div class="wrap">
   <header class="page">
     <h1>ExamFX pacing &middot; {_esc(month)}</h1>
@@ -653,6 +653,14 @@ details.data pre {{ overflow-x: auto; font-size: 0.75rem; color: var(--secondary
   }});
 }})();
 </script>
-</body>
-</html>
 """
+
+    if not standalone:
+        return page
+    return (
+        '<!doctype html>\n<html lang="en">\n<head>\n'
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        + page.replace("</style>", "</style>\n</head>\n<body>", 1)
+        + "\n</body>\n</html>\n"
+    )

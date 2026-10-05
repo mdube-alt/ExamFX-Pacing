@@ -140,3 +140,39 @@ def test_an_empty_recommendation_list_drops_the_section():
     html = render_dashboard(report, [])
     assert "Budget recommendations" not in html
     assert "Pacing by line" in html
+
+
+def test_the_artifact_form_omits_the_document_skeleton():
+    """Published as an Artifact the platform supplies html/head/body; a nested
+    one would be dropped or duplicated."""
+    report, daily = _report()
+    recs = build_recommendations(report, daily, MAPPER)
+    fragment = render_dashboard(report, recs, standalone=False)
+
+    for tag in ("<!doctype", "<html", "</head>", "<body>", "</html>"):
+        assert tag not in fragment.lower()
+    assert fragment.lstrip().startswith("<title>")
+    assert "<style>" in fragment
+
+
+def test_the_standalone_form_is_a_whole_document():
+    report, daily = _report()
+    html = render_dashboard(report, build_recommendations(report, daily, MAPPER))
+    assert html.lstrip().lower().startswith("<!doctype html>")
+    assert "</html>" in html
+    assert html.count("<body>") == 1
+    assert "<meta name=\"viewport\"" in html
+
+
+def test_both_forms_carry_the_same_figures():
+    report, daily = _report()
+    recs = build_recommendations(report, daily, MAPPER)
+    whole = render_dashboard(report, recs)
+    fragment = render_dashboard(report, recs, standalone=False)
+    assert "Pacing by line" in fragment
+    # The wrapper injects </head><body> after the styles, so compare the part
+    # below that seam rather than the whole fragment.
+    body = fragment.split("</style>", 1)[1]
+    assert body in whole
+    for figure in ("Insurance / Google", "Pacing by line", "Cumulative pace"):
+        assert figure in whole and figure in fragment

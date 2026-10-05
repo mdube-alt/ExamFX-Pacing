@@ -1,7 +1,11 @@
 # ExamFX Weekly Pacing
 
-Publishes a weekly **pacing dashboard** for ExamFX from live ad-platform spend,
-so nobody has to pull each platform by hand on Monday morning.
+Builds a weekly **pacing dashboard** for ExamFX from live ad-platform spend, so
+nobody has to pull each platform by hand on Monday morning.
+
+The dashboard carries client budgets, spend and campaign names, so it is never
+published to a public URL. It is delivered as a private Claude artifact; the
+run itself only produces the file.
 
 It also produces **budget recommendations** - which lines to raise, cut or pause,
 by how much, and which campaigns are driving the variance.
@@ -65,26 +69,22 @@ python -m examfx_pacing --dashboard site/index.html
 ## Scheduling
 
 `.github/workflows/weekly-pacing.yml` runs every **Monday at 13:00 UTC** (9am ET),
-builds the dashboard and publishes it to GitHub Pages. It can also be run on
-demand from the Actions tab, with an optional month, as-of date, a `dry_run`
-toggle that builds without publishing, and `check_auth_only` for a credential
-check on its own.
+builds the dashboard and uploads it as a build artifact alongside the CSV. It can
+also be run on demand from the Actions tab, with an optional month, as-of date,
+a `dry_run` toggle, and `check_auth_only` for a credential check on its own.
 
-The dashboard is published only when the run succeeds, so a failed Monday leaves
-the previous week's dashboard standing rather than replacing it with a broken one.
+### Why there is no GitHub Pages site
 
-### Enabling GitHub Pages (one-time)
+A Pages site is readable by anyone with the URL, whatever the repository's
+visibility; restricting one to signed-in members is a GitHub Enterprise Cloud
+feature. This dashboard carries a client's budgets, spend and campaign names, so
+it cannot go there. It is published as a private Claude artifact instead.
 
-In the repository: **Settings -> Pages -> Build and deployment -> Source:
-GitHub Actions**. No branch to pick; the workflow supplies the artifact. Until
-this is set, the publish job fails while the pacing run itself still succeeds.
+For the same reason **the repository should be private**. On a public repo the
+job summary and the uploaded artifacts are readable by anyone, and both contain
+the full pacing table.
 
-Three repository secrets and settings are involved:
-
-| Secret | Value |
-|---|---|
-| `WINDSOR_API_KEY` | Your Windsor.ai API key. |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | The full service-account JSON key, pasted as-is. |
+Two repository secrets are required:
 
 ### Setting up the two secrets
 
