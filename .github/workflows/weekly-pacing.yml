@@ -13,7 +13,7 @@ on:
         description: "Treat this date as today (YYYY-MM-DD). Defaults to today."
         required: false
       dry_run:
-        description: "Build the dashboard but do not publish it."
+        description: "Build the dashboard without writing anything else."
         type: boolean
         default: false
       check_auth_only:
@@ -28,8 +28,6 @@ concurrency:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   pace:
@@ -109,29 +107,12 @@ jobs:
         with:
           name: pacing-${{ github.run_id }}
           path: |
+            site/index.html
             site/pacing.csv
             summary.txt
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Package the dashboard for Pages
-        if: ${{ !inputs.check_auth_only && !inputs.dry_run }}
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
       - name: Remove credentials
         if: always()
         run: rm -f "$RUNNER_TEMP/sa.json"
-
-  # Separate job so the dashboard is only published once the run succeeded.
-  publish:
-    needs: pace
-    if: ${{ !inputs.check_auth_only && !inputs.dry_run }}
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@v4

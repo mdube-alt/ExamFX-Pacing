@@ -58,25 +58,19 @@ def test_check_auth_only_skips_the_run(steps):
     assert _named(steps, "Build the dashboard")["if"] == "${{ !inputs.check_auth_only }}"
 
 
-def test_the_dashboard_is_only_published_after_a_successful_run(workflow):
-    """A broken run must not replace a good dashboard with a broken one."""
-    publish = workflow["jobs"]["publish"]
-    assert publish["needs"] == "pace"
-    assert "check_auth_only" in publish["if"] and "dry_run" in publish["if"]
+def test_the_dashboard_is_never_published_to_a_public_url(workflow):
+    """A Pages site is world-readable whatever the repo's visibility, and this
+    dashboard carries client budgets and spend. It must not go there."""
+    text = WORKFLOW.read_text()
+    assert "upload-pages-artifact" not in text
+    assert "deploy-pages" not in text
+    assert "publish" not in workflow["jobs"]
 
 
-def test_a_dry_run_builds_but_does_not_publish(steps):
-    package = _named(steps, "Package the dashboard for Pages")
-    assert "!inputs.dry_run" in package["if"]
-    # The build step itself has no dry-run guard: building is always safe.
-    assert "dry_run" not in _named(steps, "Build the dashboard")["if"]
-
-
-def test_pages_permissions_are_declared(workflow):
+def test_the_workflow_asks_for_no_write_scope(workflow):
+    """Least privilege: the run reads the repo and writes nothing back."""
     perms = workflow["permissions"]
-    assert perms["pages"] == "write"
-    assert perms["id-token"] == "write"
-    assert perms["contents"] == "read", "the job never needs to push"
+    assert perms == {"contents": "read"}, perms
 
 
 def test_the_schedule_no_longer_writes_the_spreadsheet(steps):
