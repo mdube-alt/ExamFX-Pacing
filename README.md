@@ -53,7 +53,7 @@ python -m examfx_pacing --dashboard site/index.html
 | Flag | Purpose |
 |---|---|
 | `--month 2026-08` | Pace a specific month (defaults to the month containing `--as-of`). |
-| `--as-of 2026-08-26` | Pretend it is this date. Useful for backfills and for re-running a past week. |
+| `--as-of 2026-08-26` | Measure through this date. Defaults to the end of the last complete week. Useful for backfills. |
 | `--dashboard FILE` | Write the run as a self-contained HTML dashboard. |
 | `--write` | Also write the spreadsheet tabs. Off by default; the schedule no longer uses it. |
 | `--csv pacing.csv` | Also save the full table as CSV. |
@@ -162,6 +162,7 @@ for the same reason.
 
 | Section | What it shows |
 |---|---|
+| Header | The window the figures cover, and when the job last ran. Two different dates, stated separately. |
 | Stat tiles | Month elapsed, spend to date, pacing goal, variance. |
 | Cumulative pace | Goal against actual, week by week, with a hover readout. |
 | Pacing by line | Every category/channel with budget, goal, actual, variance and status. |
@@ -203,9 +204,16 @@ pacing goal  = monthly budget x cumulative %
 
 **Status** follows the sheet's own rule: at or above goal reads as `Over`.
 
-**Mid-week runs** clamp the week to the run date. If you run on Wednesday, both
-the goal and the actual are measured through Wednesday, so the comparison stays
-like-for-like instead of the line looking artificially under-paced.
+**A run measures through the last complete Monday-to-Sunday week**, not through
+the run date. The pull happens on Monday morning, and counting that Monday would
+put a day the goal treats as fully elapsed against spend that has barely started.
+
+Reproducing 5 October 2026 both ways shows the size of it: Monday had banked 41%
+of a normal day's spend by the time the job ran, but the goal counted it whole.
+That turned a real shortfall of $2,114 into a reported $3,564, and pushed the
+Insurance/Google recommendation from "raise 25%" to "raise 46%".
+
+`--as-of` still overrides it, which is what backfills use.
 
 **Recommendations** project month-end spend from the current daily run rate and
 compare it to the budget:

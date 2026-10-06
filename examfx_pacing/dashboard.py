@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import html
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 
 from .pacing import PacingReport, PacingRow
 from .recommendations import Action, Recommendation
@@ -77,6 +77,25 @@ def _short_date(day: date) -> str:
     return f"{day.strftime('%b')} {day.day}"
 
 
+def _date_range(start: date, end: date) -> str:
+    """``1 - 4 October 2026``, without repeating a shared month or year."""
+    if start == end:
+        return _long_date(end)
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start.day} - {end.day} {end.strftime('%B %Y')}"
+    if start.year == end.year:
+        return f"{start.day} {start.strftime('%B')} - {end.day} {end.strftime('%B %Y')}"
+    return (
+        f"{start.day} {start.strftime('%B %Y')} - {end.day} {end.strftime('%B %Y')}"
+    )
+
+
+def _run_stamp(moment: datetime) -> str:
+    """``6 October 2026, 19:42 UTC`` -- when the job ran, not what it covers."""
+    moment = moment.astimezone(timezone.utc)
+    return f"{moment.day} {moment.strftime('%B %Y')}, {moment.strftime('%H:%M')} UTC"
+
+
 def _money(value: float) -> str:
     sign = "-" if value < 0 else ""
     return f"{sign}${abs(value):,.0f}"
@@ -115,9 +134,15 @@ def _line_chart(labels: list[str], goals: list[float], actuals: list[float]) -> 
     badly, so this is the only chart on the page.
     """
     if len(labels) < 2:
+        # Keep the heading: a bare sentence in an unlabelled panel reads like
+        # something failed rather than like a chart waiting for a second week.
         return (
-            '<p class="empty">A trend needs at least two weeks. '
-            "This chart fills in as the month goes on.</p>"
+            '<figure class="chart">\n'
+            "  <figcaption>\n    <h3>Cumulative pace</h3>\n"
+            '    <p class="sub">Spend to date against the pacing goal, '
+            "week by week.</p>\n  </figcaption>\n"
+            '  <p class="empty">Only one complete week so far. The trend '
+            "appears once the month has a second one.</p>\n</figure>"
         )
 
     width, height = 720, 260
@@ -277,8 +302,8 @@ def _pacing_table(rows: list[PacingRow]) -> str:
 <section class="panel">
   <h2>Pacing by line</h2>
   <p class="sub">Cumulative goal is the monthly budget times the share of the
-     month elapsed. A week still in progress is measured through today, so goal
-     and actual stay like for like.</p>
+     month elapsed, measured through the end of the last complete
+     Monday-to-Sunday week, so goal and actual cover the same whole days.</p>
   <div class="scroll">
   <table>
     <thead>
@@ -411,7 +436,7 @@ def render_dashboard(
     report: PacingReport,
     recommendations: list[Recommendation] | None = None,
     *,
-    generated_at: date | None = None,
+    generated_at: datetime | None = None,
     source_note: str = "",
     standalone: bool = True,
 ) -> str:
@@ -426,7 +451,16 @@ def render_dashboard(
     rows = _latest_rows(report)
     labels, goals, actuals = _cumulative_series(report)
     month = report.month_start.strftime("%B %Y")
-    generated = generated_at or report.as_of
+    # When the job ran, which is not the same as the last day it covers.
+    generated = generated_at or datetime.now(timezone.utc)
+    if not isinstance(generated, datetime):
+        generated = datetime(generated.year, generated.month, generated.day,
+                             tzinfo=timezone.utc)
+    weeks_covered = sorted({r.week for r in report.rows})
+    week_note = (
+        f"week {weeks_covered[0]}" if len(weeks_covered) == 1
+        else f"weeks {weeks_covered[0]}-{weeks_covered[-1]}"
+    ) if weeks_covered else ""
 
     table_rows = [
         {
@@ -469,7 +503,19 @@ body {{
 .wrap {{ max-width: 1040px; margin: 0 auto; }}
 header.page {{ padding: 32px 0 8px; }}
 h1 {{ font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }}
-.meta {{ color: var(--secondary); font-size: 0.9rem; margin: 0; }}
+.runmeta {{
+  display: flex; flex-wrap: wrap; gap: 10px 36px; margin: 10px 0 0;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px;
+}}
+.runmeta > div {{ display: flex; flex-direction: column; min-width: 0; }}
+.runmeta dt {{
+  color: var(--secondary); font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.06em; font-weight: 600;
+}}
+.runmeta dd {{ margin: 0; }}
+.runmeta .range {{ font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }}
+.runmeta .note {{ color: var(--muted); font-size: 0.78rem; }}
 .sub {{ color: var(--secondary); font-size: 0.875rem; margin: 2px 0 14px; }}
 h2 {{ font-size: 1.05rem; margin: 0 0 2px; }}
 h3 {{ font-size: 0.95rem; margin: 0; }}
@@ -613,8 +659,18 @@ details.data pre {{ overflow-x: auto; font-size: 0.75rem; color: var(--secondary
 <div class="wrap">
   <header class="page">
     <h1>ExamFX pacing &middot; {_esc(month)}</h1>
-    <p class="meta">Through {_esc(_long_date(report.as_of))}
-       &middot; generated {_esc(generated.isoformat())}{_esc(source_note)}</p>
+    <dl class="runmeta">
+      <div>
+        <dt>Showing data for</dt>
+        <dd class="range">{_esc(_date_range(report.month_start, report.as_of))}</dd>
+        <dd class="note">{_esc(week_note)} of {_esc(month)}, complete weeks only</dd>
+      </div>
+      <div>
+        <dt>Last updated</dt>
+        <dd class="range">{_esc(_run_stamp(generated))}</dd>
+        <dd class="note">rebuilt every Monday{_esc(source_note)}</dd>
+      </div>
+    </dl>
   </header>
 
   {_tiles(report, rows)}
