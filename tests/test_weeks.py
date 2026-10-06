@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
-from examfx_pacing.weeks import build_weeks, format_range, month_bounds
+from examfx_pacing.weeks import build_weeks, format_range, month_bounds, last_complete_week_end
 
 
 def test_august_2026_matches_the_trackers_helper_table():
@@ -66,3 +66,31 @@ def test_truncating_an_in_progress_week():
 
 def test_single_day_range_is_not_repeated():
     assert format_range(date(2026, 8, 31), date(2026, 8, 31)) == "8/31"
+
+
+# --- Which day a run measures through --------------------------------------
+
+
+def test_a_monday_run_reports_the_week_that_just_ended():
+    """The pull happens Monday morning; Monday's own spend has barely begun."""
+    assert last_complete_week_end(date(2026, 10, 5)) == date(2026, 10, 4)
+
+
+def test_a_sunday_run_does_not_count_itself():
+    """Sunday is not over until it is over."""
+    assert last_complete_week_end(date(2026, 10, 11)) == date(2026, 10, 4)
+
+
+def test_a_midweek_run_still_reports_the_last_finished_week():
+    for day in (6, 7, 8, 9, 10):
+        assert last_complete_week_end(date(2026, 10, day)) == date(2026, 10, 4)
+
+
+def test_it_always_lands_on_a_sunday_and_never_in_the_future():
+    start = date(2026, 1, 1)
+    for offset in range(400):
+        today = start + timedelta(days=offset)
+        end = last_complete_week_end(today)
+        assert end.weekday() == 6, f"{today} -> {end} is not a Sunday"
+        assert end < today, f"{today} -> {end} is not in the past"
+        assert (today - end).days <= 7

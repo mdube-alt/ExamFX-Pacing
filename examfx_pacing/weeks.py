@@ -16,7 +16,14 @@ import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-__all__ = ["Week", "month_bounds", "build_weeks", "format_day", "format_range"]
+__all__ = [
+    "Week",
+    "month_bounds",
+    "build_weeks",
+    "format_day",
+    "format_range",
+    "last_complete_week_end",
+]
 
 
 @dataclass(frozen=True)
@@ -94,3 +101,20 @@ def format_range(start: date, end: date) -> str:
     if start == end:
         return format_day(start)
     return f"{format_day(start)} - {format_day(end)}"
+
+
+def last_complete_week_end(today: date) -> date:
+    """The Sunday that ended the last full Monday-to-Sunday week.
+
+    Pacing is pulled on Monday mornings, and a run that measured through the
+    run date would include that Monday: one day the goal counts as fully
+    elapsed, but whose spend has barely started. That understates every line
+    and pushes the recommendations toward raising budgets that are fine.
+
+    Ending on the previous Sunday keeps goal and actual on the same complete
+    days. Run on any other weekday it still reports the last finished week,
+    which is what a weekly pacing report means.
+    """
+    # Monday is weekday 0, so a Monday steps back one day to Sunday, and a
+    # Sunday steps back a full week rather than counting itself.
+    return today - timedelta(days=today.weekday() + 1)

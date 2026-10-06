@@ -115,9 +115,15 @@ def _line_chart(labels: list[str], goals: list[float], actuals: list[float]) -> 
     badly, so this is the only chart on the page.
     """
     if len(labels) < 2:
+        # Keep the heading: a bare sentence in an unlabelled panel reads like
+        # something failed rather than like a chart waiting for a second week.
         return (
-            '<p class="empty">A trend needs at least two weeks. '
-            "This chart fills in as the month goes on.</p>"
+            '<figure class="chart">\n'
+            "  <figcaption>\n    <h3>Cumulative pace</h3>\n"
+            '    <p class="sub">Spend to date against the pacing goal, '
+            "week by week.</p>\n  </figcaption>\n"
+            '  <p class="empty">Only one complete week so far. The trend '
+            "appears once the month has a second one.</p>\n</figure>"
         )
 
     width, height = 720, 260
@@ -277,8 +283,8 @@ def _pacing_table(rows: list[PacingRow]) -> str:
 <section class="panel">
   <h2>Pacing by line</h2>
   <p class="sub">Cumulative goal is the monthly budget times the share of the
-     month elapsed. A week still in progress is measured through today, so goal
-     and actual stay like for like.</p>
+     month elapsed, measured through the end of the last complete
+     Monday-to-Sunday week, so goal and actual cover the same whole days.</p>
   <div class="scroll">
   <table>
     <thead>

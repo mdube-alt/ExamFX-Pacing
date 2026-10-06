@@ -97,8 +97,10 @@ def test_a_single_week_explains_itself_instead_of_drawing_a_line():
     spend = [CampaignSpend("Google", "B2C - Insurance - Brand - PPC", 100.0,
                            date(2026, 10, 1))]
     html = _render(as_of=date(2026, 10, 2), spend=spend)
-    assert "at least two weeks" in html
+    assert "Only one complete week so far" in html
     assert "<path" not in html
+    # The heading stays, so the panel reads as pending rather than broken.
+    assert "Cumulative pace" in html
 
 
 def test_a_steady_driver_gets_no_chip_but_a_moving_one_does():

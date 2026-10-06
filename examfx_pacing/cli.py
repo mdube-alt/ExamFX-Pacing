@@ -17,6 +17,7 @@ from .report import render_csv, render_recommendations, render_text
 from .run import run_pacing
 from .sheets import SheetsClient, SheetsError
 from .spend import CsvSpendSource, WindsorError, WindsorSpendSource
+from .weeks import last_complete_week_end
 
 log = logging.getLogger("examfx_pacing")
 
@@ -47,7 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--as-of", type=_parse_date,
-        help="Treat this as today's date. Defaults to the actual current date.",
+        help="Measure through this date. Defaults to the end of the last "
+             "complete Monday-to-Sunday week.",
     )
     parser.add_argument(
         "--write", action="store_true",
@@ -105,7 +107,10 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
     )
 
-    as_of = args.as_of or date.today()
+    # Default to the last finished Monday-to-Sunday week. Measuring through
+    # the run date would count the run day as fully elapsed while its spend
+    # has barely started -- see last_complete_week_end.
+    as_of = args.as_of or last_complete_week_end(date.today())
     year, month = args.month or (as_of.year, as_of.month)
 
     config = load_config(spreadsheet_id=args.spreadsheet_id)
