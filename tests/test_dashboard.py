@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -178,3 +178,59 @@ def test_both_forms_carry_the_same_figures():
     assert body in whole
     for figure in ("Insurance / Google", "Pacing by line", "Cumulative pace"):
         assert figure in whole and figure in fragment
+
+
+# --- The header states its window and its run time --------------------------
+
+
+def test_the_header_names_the_window_and_the_run_time():
+    """Two different dates that were previously conflated into one line."""
+    report, daily = _report()
+    html = render_dashboard(
+        report,
+        build_recommendations(report, daily, MAPPER),
+        generated_at=datetime(2026, 10, 19, 13, 4, tzinfo=timezone.utc),
+    )
+    assert "Showing data for" in html
+    assert "Last updated" in html
+    assert "19 October 2026, 13:04 UTC" in html
+    # The window starts at the 1st, not just "through" the end date.
+    assert "1 - 12 October 2026" in html
+
+
+def test_the_run_time_is_not_the_data_date():
+    """It used to echo as_of, which made a stale page look freshly built."""
+    report, daily = _report(as_of=date(2026, 10, 12))
+    html = render_dashboard(
+        report,
+        build_recommendations(report, daily, MAPPER),
+        generated_at=datetime(2026, 11, 2, 9, 30, tzinfo=timezone.utc),
+    )
+    assert "2 November 2026, 09:30 UTC" in html
+    assert "1 - 12 October 2026" in html
+
+
+def test_a_naive_date_is_still_accepted_as_a_run_time():
+    report, daily = _report()
+    html = render_dashboard(report, build_recommendations(report, daily, MAPPER),
+                            generated_at=date(2026, 10, 19))
+    assert "19 October 2026, 00:00 UTC" in html
+
+
+def test_the_window_says_how_many_weeks_it_covers():
+    report, daily = _report(as_of=date(2026, 10, 4))
+    html = render_dashboard(report, build_recommendations(report, daily, MAPPER))
+    assert "week 1" in html
+
+    report, daily = _report(as_of=date(2026, 10, 18))
+    html = render_dashboard(report, build_recommendations(report, daily, MAPPER))
+    assert "weeks 1-3" in html
+
+
+def test_a_range_inside_one_month_does_not_repeat_the_month():
+    from examfx_pacing.dashboard import _date_range
+    assert _date_range(date(2026, 10, 1), date(2026, 10, 4)) == "1 - 4 October 2026"
+    assert _date_range(date(2026, 9, 28), date(2026, 10, 4)) == (
+        "28 September - 4 October 2026"
+    )
+    assert _date_range(date(2026, 10, 4), date(2026, 10, 4)) == "Sunday 4 October 2026"

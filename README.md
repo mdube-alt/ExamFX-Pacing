@@ -162,6 +162,7 @@ for the same reason.
 
 | Section | What it shows |
 |---|---|
+| Header | The window the figures cover, and when the job last ran. Two different dates, stated separately. |
 | Stat tiles | Month elapsed, spend to date, pacing goal, variance. |
 | Cumulative pace | Goal against actual, week by week, with a hover readout. |
 | Pacing by line | Every category/channel with budget, goal, actual, variance and status. |
