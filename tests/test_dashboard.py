@@ -92,12 +92,12 @@ def test_two_series_get_a_legend():
     assert 'class="legend"' in html
 
 
-def test_a_single_week_explains_itself_instead_of_drawing_a_line():
+def test_a_single_day_explains_itself_instead_of_drawing_a_line():
     """A one-point line chart is meaningless; say so rather than draw it."""
     spend = [CampaignSpend("Google", "B2C - Insurance - Brand - PPC", 100.0,
                            date(2026, 10, 1))]
-    html = _render(as_of=date(2026, 10, 2), spend=spend)
-    assert "Only one complete week so far" in html
+    html = _render(as_of=date(2026, 10, 1), spend=spend)
+    assert "Not enough days yet" in html
     assert "<path" not in html
     # The heading stays, so the panel reads as pending rather than broken.
     assert "Cumulative pace" in html
@@ -234,3 +234,85 @@ def test_a_range_inside_one_month_does_not_repeat_the_month():
         "28 September - 4 October 2026"
     )
     assert _date_range(date(2026, 10, 4), date(2026, 10, 4)) == "Sunday 4 October 2026"
+
+
+# --- The chart runs day by day ---------------------------------------------
+
+
+def _daily(as_of=date(2026, 10, 11)):
+    spend = [
+        CampaignSpend("Google", "B2C - Insurance - Brand - PPC", 400.0, date(2026, 10, d))
+        for d in range(1, as_of.day + 1)
+    ]
+    report, _ = _report(as_of, spend)
+    return report, spend
+
+
+def test_the_chart_plots_one_point_per_day():
+    from examfx_pacing.dashboard import _daily_series
+    report, spend = _daily()
+    labels, goals, actuals = _daily_series(report, spend, MAPPER)
+
+    assert len(labels) == 11, "1 - 11 October is eleven points, not two weeks"
+    assert labels[0] == "10/1" and labels[-1] == "10/11"
+
+
+def test_the_daily_series_is_cumulative():
+    from examfx_pacing.dashboard import _daily_series
+    report, spend = _daily()
+    _, goals, actuals = _daily_series(report, spend, MAPPER)
+
+    assert actuals == sorted(actuals), "cumulative spend never falls"
+    assert goals == sorted(goals)
+    assert actuals[0] == 400.0 and actuals[-1] == 4400.0
+
+
+def test_the_last_point_matches_the_tiles():
+    """Chart and stat tiles must not disagree about the same two numbers."""
+    from examfx_pacing.dashboard import _daily_series, _latest_rows
+    report, spend = _daily()
+    _, goals, actuals = _daily_series(report, spend, MAPPER)
+    rows = _latest_rows(report)
+
+    assert actuals[-1] == pytest.approx(sum(r.actual_spend for r in rows), abs=0.01)
+    assert goals[-1] == pytest.approx(sum(r.pacing_goal for r in rows), abs=0.01)
+
+
+def test_spend_outside_the_window_is_not_counted():
+    report, spend = _daily()
+    from examfx_pacing.dashboard import _daily_series
+    spend = spend + [
+        CampaignSpend("Google", "B2C - Insurance - Brand - PPC", 9999.0,
+                      date(2026, 10, 30)),
+    ]
+    _, _, actuals = _daily_series(report, spend, MAPPER)
+    assert actuals[-1] == 4400.0, "a later day must not leak into the window"
+
+
+def test_undated_spend_falls_back_to_weeks():
+    """A CSV without a date column still gets a chart, just a coarser one."""
+    from examfx_pacing.dashboard import _daily_series
+    report, _ = _report()
+    undated = [CampaignSpend("Google", "B2C - Insurance - Brand - PPC", 100.0)]
+    assert _daily_series(report, undated, MAPPER) is None
+
+    html = render_dashboard(report, [], daily_spend=undated, mapper=MAPPER)
+    assert "Cumulative pace" in html
+
+
+def test_only_the_latest_point_is_marked():
+    """A dot a day would be 31 marks by month end."""
+    report, spend = _daily()
+    html = render_dashboard(report, [], daily_spend=spend, mapper=MAPPER)
+    # Two permanent endpoint dots; the rest appear on hover only.
+    assert html.count('class="dot dot-goal"/>') == 1
+    assert html.count('class="dot dot-actual"/>') == 1
+    assert "hover-dot" in html and "crosshair" in html
+
+
+def test_the_x_axis_does_not_label_every_day():
+    report, spend = _daily()
+    html = render_dashboard(report, [], daily_spend=spend, mapper=MAPPER)
+    labelled = re.findall(r'class="tick tick-x">([^<]+)<', html)
+    assert 2 <= len(labelled) <= 7, labelled
+    assert labelled[0] == "10/1" and labelled[-1] == "10/11"

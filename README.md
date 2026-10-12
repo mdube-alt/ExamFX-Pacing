@@ -164,7 +164,7 @@ for the same reason.
 |---|---|
 | Header | The window the figures cover, and when the job last ran. Two different dates, stated separately. |
 | Stat tiles | Month elapsed, spend to date, pacing goal, variance. |
-| Cumulative pace | Goal against actual, week by week, with a hover readout. |
+| Cumulative pace | Cumulative goal against actual, one point per day, with a crosshair readout. |
 | Pacing by line | Every category/channel with budget, goal, actual, variance and status. |
 | Budget recommendations | One card per line, biggest lever first, with the campaigns driving it. |
 | Needs attention | Unmapped campaigns, unbudgeted spend, lines with no data source. |
