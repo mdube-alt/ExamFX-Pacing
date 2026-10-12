@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import html
 import json
-from datetime import date, datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 
+from .categories import CategoryMapper
 from .pacing import PacingReport, PacingRow
 from .recommendations import Action, Recommendation
 
@@ -113,7 +115,7 @@ def _vars(palette: dict) -> str:
 
 
 def _cumulative_series(report: PacingReport) -> tuple[list[str], list[float], list[float]]:
-    """Goal and actual totals per week, across every line."""
+    """Goal and actual totals per week. The fallback when spend has no dates."""
     labels: list[str] = []
     goals: list[float] = []
     actuals: list[float] = []
@@ -124,6 +126,52 @@ def _cumulative_series(report: PacingReport) -> tuple[list[str], list[float], li
         labels.append(rows[0].dates)
         goals.append(round(sum(r.pacing_goal for r in rows), 2))
         actuals.append(round(sum(r.actual_spend for r in rows), 2))
+    return labels, goals, actuals
+
+
+def _daily_series(
+    report: PacingReport, daily_spend, mapper
+) -> tuple[list[str], list[float], list[float]] | None:
+    """Cumulative goal and actual for every day of the month so far.
+
+    A point per week shows only where the month stood on four or five dates;
+    a point per day shows where the two lines parted company. Returns None
+    when the spend rows carry no dates, so a CSV pull falls back to weeks.
+
+    Both series cover the same category/channel lines the table shows, so the
+    last point equals the Spend to date and Pacing goal tiles.
+    """
+    rows = _latest_rows(report)
+    if not rows:
+        return None
+    lines = {(r.category, r.channel) for r in rows}
+    budget_total = sum(r.monthly_budget for r in rows)
+    days_in_month = report.weeks[-1].days_in_month if report.weeks else 30
+
+    spent: dict[date, float] = defaultdict(float)
+    dated = False
+    for entry in daily_spend or ():
+        if entry.day is None:
+            continue
+        dated = True
+        if not (report.month_start <= entry.day <= report.as_of):
+            continue
+        if (mapper.category_for(entry.campaign), entry.channel) in lines:
+            spent[entry.day] += entry.spend
+    if not dated:
+        return None
+
+    labels: list[str] = []
+    goals: list[float] = []
+    actuals: list[float] = []
+    running = 0.0
+    span = (report.as_of - report.month_start).days + 1
+    for offset in range(span):
+        day = report.month_start + timedelta(days=offset)
+        running += spent.get(day, 0.0)
+        labels.append(f"{day.month}/{day.day}")
+        goals.append(round(budget_total * (offset + 1) / days_in_month, 2))
+        actuals.append(round(running, 2))
     return labels, goals, actuals
 
 
@@ -139,10 +187,10 @@ def _line_chart(labels: list[str], goals: list[float], actuals: list[float]) -> 
         return (
             '<figure class="chart">\n'
             "  <figcaption>\n    <h3>Cumulative pace</h3>\n"
-            '    <p class="sub">Spend to date against the pacing goal, '
-            "week by week.</p>\n  </figcaption>\n"
-            '  <p class="empty">Only one complete week so far. The trend '
-            "appears once the month has a second one.</p>\n</figure>"
+            '    <p class="sub">Cumulative spend against the pacing goal, '
+            "day by day.</p>\n  </figcaption>\n"
+            '  <p class="empty">Not enough days yet. The trend appears once '
+            "the month has more than one.</p>\n</figure>"
         )
 
     width, height = 720, 260
@@ -175,25 +223,41 @@ def _line_chart(labels: list[str], goals: list[float], actuals: list[float]) -> 
             f"{_money(value)}</text>"
         )
 
+    # Roughly six labels however long the month runs, ends always included.
+    step = max(1, round((len(labels) - 1) / 5)) if len(labels) > 6 else 1
     xlabels = []
     for i, label in enumerate(labels):
-        # Only the ends and every other point, so labels never collide.
-        if i == 0 or i == len(labels) - 1 or len(labels) <= 5:
-            xlabels.append(
-                f'<text x="{x(i):.1f}" y="{height - pad_b + 20}" class="tick tick-x">'
-                f"{_esc(label)}</text>"
-            )
+        if i % step and i != len(labels) - 1:
+            continue
+        if i and i != len(labels) - 1 and (len(labels) - 1 - i) < step / 2:
+            continue  # too close to the final label
+        xlabels.append(
+            f'<text x="{x(i):.1f}" y="{height - pad_b + 20}" class="tick tick-x">'
+            f"{_esc(label)}</text>"
+        )
 
-    points = []
+    # A dot a day would be 31 marks by month end. Draw the line clean and
+    # emphasise only the latest point; hover supplies the rest.
+    last = len(labels) - 1
+    points = [
+        f'<circle cx="{x(last):.1f}" cy="{y(goals[last]):.1f}" r="4.5" '
+        f'class="dot dot-goal"/>'
+        f'<circle cx="{x(last):.1f}" cy="{y(actuals[last]):.1f}" r="4.5" '
+        f'class="dot dot-actual"/>'
+    ]
+    band = plot_w / max(len(labels) - 1, 1)
     for i, label in enumerate(labels):
         points.append(
             f'<g class="hit" data-label="{_esc(label)}" '
             f'data-goal="{_money(goals[i])}" data-actual="{_money(actuals[i])}">'
-            f'<rect x="{x(i) - 24:.1f}" y="{pad_t}" width="48" height="{plot_h}" '
-            f'fill="transparent"/>'
-            f'<circle cx="{x(i):.1f}" cy="{y(goals[i]):.1f}" r="4.5" class="dot dot-goal"/>'
-            f'<circle cx="{x(i):.1f}" cy="{y(actuals[i]):.1f}" r="4.5" '
-            f'class="dot dot-actual"/>'
+            f'<rect x="{x(i) - band / 2:.1f}" y="{pad_t}" '
+            f'width="{band:.1f}" height="{plot_h}" fill="transparent"/>'
+            f'<line class="crosshair" x1="{x(i):.1f}" y1="{pad_t}" '
+            f'x2="{x(i):.1f}" y2="{pad_t + plot_h}"/>'
+            f'<circle cx="{x(i):.1f}" cy="{y(goals[i]):.1f}" r="4" '
+            f'class="dot dot-goal hover-dot"/>'
+            f'<circle cx="{x(i):.1f}" cy="{y(actuals[i]):.1f}" r="4" '
+            f'class="dot dot-actual hover-dot"/>'
             f"</g>"
         )
 
@@ -201,7 +265,7 @@ def _line_chart(labels: list[str], goals: list[float], actuals: list[float]) -> 
 <figure class="chart">
   <figcaption>
     <h3>Cumulative pace</h3>
-    <p class="sub">Spend to date against the pacing goal, week by week.</p>
+    <p class="sub">Cumulative spend against the pacing goal, day by day.</p>
   </figcaption>
   <div class="legend">
     <span class="key"><i class="swatch goal"></i>Pacing goal</span>
@@ -439,6 +503,8 @@ def render_dashboard(
     generated_at: datetime | None = None,
     source_note: str = "",
     standalone: bool = True,
+    daily_spend=None,
+    mapper=None,
 ) -> str:
     """Build the dashboard as one HTML string.
 
@@ -449,7 +515,10 @@ def render_dashboard(
     """
     recommendations = recommendations or []
     rows = _latest_rows(report)
-    labels, goals, actuals = _cumulative_series(report)
+    series = None
+    if daily_spend is not None:
+        series = _daily_series(report, daily_spend, mapper or CategoryMapper())
+    labels, goals, actuals = series or _cumulative_series(report)
     month = report.month_start.strftime("%B %Y")
     # When the job ran, which is not the same as the last day it covers.
     generated = generated_at or datetime.now(timezone.utc)
@@ -594,6 +663,11 @@ tbody tr:last-child th, tbody tr:last-child td {{ border-bottom: none; }}
 .tip .tip-line {{ display: flex; gap: 10px; justify-content: space-between; }}
 .tip b {{ display: block; margin-bottom: 4px; }}
 .hit {{ cursor: crosshair; }}
+/* The crosshair and its dots belong to the day under the pointer. */
+.crosshair, .hover-dot {{ opacity: 0; pointer-events: none; }}
+.crosshair {{ stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }}
+.hit:hover .crosshair, .hit:hover .hover-dot {{ opacity: 1; }}
+@media (hover: none) {{ .hit:active .crosshair, .hit:active .hover-dot {{ opacity: 1; }} }}
 
 .recs {{ display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }}
 .rec {{ border: 1px solid var(--border); border-left: 3px solid var(--grid);

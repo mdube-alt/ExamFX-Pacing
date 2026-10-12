@@ -170,7 +170,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.dashboard:
         Path(args.dashboard).parent.mkdir(parents=True, exist_ok=True)
         Path(args.dashboard).write_text(
-            render_dashboard(result.report, result.recommendations), encoding="utf-8"
+            render_dashboard(
+                result.report,
+                result.recommendations,
+                daily_spend=result.daily_spend,
+                mapper=mapper,
+            ),
+            encoding="utf-8",
         )
         log.info("wrote the dashboard to %s", args.dashboard)
 
