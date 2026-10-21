@@ -316,3 +316,89 @@ def test_the_x_axis_does_not_label_every_day():
     labelled = re.findall(r'class="tick tick-x">([^<]+)<', html)
     assert 2 <= len(labelled) <= 7, labelled
     assert labelled[0] == "10/1" and labelled[-1] == "10/11"
+
+
+# --- The budget-spent tile --------------------------------------------------
+
+
+def _tiles_html(as_of=date(2026, 10, 18), spend=None):
+    from examfx_pacing.dashboard import _latest_rows, _tiles
+    report, _ = _report(as_of, spend)
+    return _tiles(report, _latest_rows(report))
+
+
+def test_the_tile_reports_budget_spent_against_the_elapsed_target():
+    """The fixture spends 400/day for 12 days against a 52,500 budget."""
+    html = _tiles_html()
+    assert "Budget spent" in html
+    # 4,800 / 52,500 = 9% spent, against 18/31 = 58% of the month elapsed.
+    assert ">9%<" in html
+    assert "58% target" in html
+
+
+def test_the_gap_is_stated_in_points():
+    html = _tiles_html()
+    assert "points behind the 58% target" in html
+
+
+def test_ahead_and_level_read_correctly():
+    from examfx_pacing.dashboard import _tiles
+    rows = _latest_rows_for(date(2026, 10, 18))
+
+    # Spend exactly on target.
+    for row in rows:
+        row.actual_spend = row.monthly_budget * row.cumulative_pct
+    assert "level with the 58% target" in _tiles(_REPORT, rows)
+
+    # Spend well ahead of it.
+    for row in rows:
+        row.actual_spend = row.monthly_budget * 0.80
+    assert "points ahead of the 58% target" in _tiles(_REPORT, rows)
+
+
+_REPORT = None
+
+
+def _latest_rows_for(as_of):
+    from examfx_pacing.dashboard import _latest_rows
+    global _REPORT
+    _REPORT, _ = _report(as_of)
+    return _latest_rows(_REPORT)
+
+
+def test_the_meter_fills_to_spend_and_ticks_at_the_target():
+    html = _tiles_html()
+    fill = re.search(r'meter-fill" style="width:([\d.]+)%', html)
+    tick = re.search(r'meter-target" style="left:([\d.]+)%', html)
+    assert fill and tick
+    assert float(fill.group(1)) == pytest.approx(4800 / 52500 * 100, abs=0.1)
+    assert float(tick.group(1)) == pytest.approx(18 / 31 * 100, abs=0.1)
+
+
+def test_overspending_clamps_the_bar_but_not_the_number():
+    """A bar wider than its track would overflow the tile."""
+    from examfx_pacing.dashboard import _tiles
+    rows = _latest_rows_for(date(2026, 10, 18))
+    for row in rows:
+        row.actual_spend = row.monthly_budget * 1.4
+    html = _tiles(_REPORT, rows)
+
+    assert ">140%<" in html, "the figure still tells the truth"
+    fill = re.search(r'meter-fill" style="width:([\d.]+)%', html)
+    assert float(fill.group(1)) == 100.0, "the bar stops at the track"
+
+
+def test_no_budget_does_not_divide_by_zero():
+    from examfx_pacing.dashboard import _tiles
+    rows = _latest_rows_for(date(2026, 10, 18))
+    for row in rows:
+        row.monthly_budget = 0.0
+    html = _tiles(_REPORT, rows)
+    assert "no budget on the lines shown" in html
+    assert ">0%<" in html
+
+
+def test_the_meter_is_described_for_screen_readers():
+    html = _tiles_html()
+    assert 'role="img"' in html
+    assert "aria-label=" in html
