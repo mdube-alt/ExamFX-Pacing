@@ -305,12 +305,32 @@ def _tiles(report: PacingReport, rows: list[PacingRow]) -> str:
     role = "serious" if over else "warning"
     word = "over pace" if over else "under pace"
 
+    # Share of the whole month's budget spent, against the share the month has
+    # used up. The target is the elapsed figure: the pacing goal is the budget
+    # times exactly that, so the two percentages are directly comparable.
+    spent_pct = actual / budget if budget else 0.0
+    points = round((spent_pct - elapsed) * 100)
+    if not budget:
+        gap = "no budget on the lines shown"
+    elif points > 0:
+        gap = f"{points} points ahead of the {elapsed:.0%} target"
+    elif points < 0:
+        gap = f"{abs(points)} points behind the {elapsed:.0%} target"
+    else:
+        gap = f"level with the {elapsed:.0%} target"
+
     return f"""
 <section class="tiles">
   <div class="tile">
-    <span class="label">Month elapsed</span>
-    <span class="value">{elapsed:.0%}</span>
-    <span class="foot">through {_esc(_short_date(report.as_of))}</span>
+    <span class="label">Budget spent</span>
+    <span class="value">{spent_pct:.0%}</span>
+    <span class="meter" role="img"
+          aria-label="{spent_pct:.0%} of the monthly budget spent against a
+                      {elapsed:.0%} target">
+      <i class="meter-fill" style="width:{min(spent_pct, 1.0) * 100:.1f}%"></i>
+      <i class="meter-target" style="left:{min(elapsed, 1.0) * 100:.1f}%"></i>
+    </span>
+    <span class="foot">{_esc(gap)}</span>
   </div>
   <div class="tile">
     <span class="label">Spend to date</span>
@@ -320,7 +340,7 @@ def _tiles(report: PacingReport, rows: list[PacingRow]) -> str:
   <div class="tile">
     <span class="label">Pacing goal</span>
     <span class="value">{_money(goal)}</span>
-    <span class="foot">where spend should be today</span>
+    <span class="foot">where spend should be by {_esc(_short_date(report.as_of))}</span>
   </div>
   <div class="tile">
     <span class="label">Variance</span>
@@ -598,6 +618,20 @@ h3 {{ font-size: 0.95rem; margin: 0; }}
   letter-spacing: 0.04em; }}
 .tile .value {{ font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }}
 .tile .foot {{ color: var(--muted); font-size: 0.78rem; }}
+/* Spend fills the track, the target is a tick on it. Same two colours as the
+   chart's two series, so the tile and the chart encode the same thing. */
+.meter {{
+  position: relative; display: block; height: 6px; border-radius: 3px;
+  background: var(--grid); margin: 7px 0 5px;
+}}
+.meter-fill {{
+  position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px;
+  background: var(--series-actual);
+}}
+.meter-target {{
+  position: absolute; top: -3px; margin-left: -1px; width: 2px; height: 12px;
+  border-radius: 1px; background: var(--series-goal);
+}}
 
 .panel {{
   background: var(--surface); border: 1px solid var(--border);
