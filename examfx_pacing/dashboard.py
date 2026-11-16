@@ -310,12 +310,13 @@ def _tiles(report: PacingReport, rows: list[PacingRow]) -> str:
     # times exactly that, so the two percentages are directly comparable.
     spent_pct = actual / budget if budget else 0.0
     points = round((spent_pct - elapsed) * 100)
+    noun = "point" if abs(points) == 1 else "points"
     if not budget:
         gap = "no budget on the lines shown"
     elif points > 0:
-        gap = f"{points} points ahead of the {elapsed:.0%} target"
+        gap = f"{points} {noun} ahead of the {elapsed:.0%} target"
     elif points < 0:
-        gap = f"{abs(points)} points behind the {elapsed:.0%} target"
+        gap = f"{abs(points)} {noun} behind the {elapsed:.0%} target"
     else:
         gap = f"level with the {elapsed:.0%} target"
 

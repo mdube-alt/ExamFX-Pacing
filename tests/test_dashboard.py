@@ -356,6 +356,20 @@ def test_ahead_and_level_read_correctly():
     assert "points ahead of the 58% target" in _tiles(_REPORT, rows)
 
 
+def test_a_one_point_gap_reads_as_a_single_point():
+    """A gap of exactly one point is a point, not "1 points"."""
+    from examfx_pacing.dashboard import _tiles
+    rows = _latest_rows_for(date(2026, 10, 18))
+
+    for row in rows:
+        row.actual_spend = row.monthly_budget * (row.cumulative_pct + 0.01)
+    assert "1 point ahead of the 58% target" in _tiles(_REPORT, rows)
+
+    for row in rows:
+        row.actual_spend = row.monthly_budget * (row.cumulative_pct - 0.01)
+    assert "1 point behind the 58% target" in _tiles(_REPORT, rows)
+
+
 _REPORT = None
 
 
